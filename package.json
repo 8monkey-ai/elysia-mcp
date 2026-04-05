@@ -1,0 +1,54 @@
+{
+  "name": "@8monkey/elysia-mcp",
+  "version": "0.0.0",
+  "description": "Turn Elysia routes into MCP tools using existing schemas, handlers, and metadata.",
+  "keywords": [
+    "ai",
+    "elysia",
+    "mcp",
+    "tools"
+  ],
+  "homepage": "https://hebo.ai",
+  "bugs": {
+    "url": "https://github.com/8monkey-ai/elysia-mcp/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/8monkey-ai/elysia-mcp.git"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "git clean -fdx -e '.env*' .",
+    "format": "oxfmt .",
+    "format:staged": "oxfmt --no-error-on-unmatched-pattern",
+    "lint": "oxlint",
+    "lint:staged": "oxlint --fix",
+    "typecheck": "oxlint --type-check",
+    "test": "bun test",
+    "check": "bun lint && bun typecheck",
+    "fix": "bun lint:staged && bun fmt:staged"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "oxfmt": "^0.43.0",
+    "oxlint": "^1.58.0",
+    "oxlint-tsgolint": "^0.19.0",
+    "typescript": "^6.0.2"
+  },
+  "peerDependencies": {},
+  "peerDependenciesMeta": {}
+}

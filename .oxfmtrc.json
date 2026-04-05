@@ -1,0 +1,6 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "sortImports": {
+    "groups": ["builtin", "external", "subpath", ["parent", "sibling", "index"], "style", "unknown"]
+  }
+}
