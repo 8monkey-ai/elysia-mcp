@@ -11,8 +11,6 @@
  * hooks, and all plugins).
  */
 
-import { AsyncLocalStorage } from "node:async_hooks";
-
 import type { Elysia } from "elysia";
 
 // ─── Module Augmentation ────────────────────────────────────────────
@@ -65,15 +63,6 @@ interface DiscoveredTool {
 	path: string;
 	flatten: FlattenResult;
 }
-
-// ─── AsyncLocalStorage for per-request context ───────────────────────
-
-interface McpRequestContext {
-	/** The original incoming Request to the MCP endpoint */
-	request: Request;
-}
-
-const mcpContext = new AsyncLocalStorage<McpRequestContext>();
 
 // ─── Route Discovery ─────────────────────────────────────────────────
 
@@ -183,13 +172,36 @@ function buildRequest(
 	});
 }
 
+async function parseResponseData(response: Response): Promise<unknown> {
+	const contentType = response.headers.get("content-type") ?? "";
+	const text = await response.text();
+
+	if (!contentType.includes("application/json") || text.length === 0) {
+		return text;
+	}
+
+	try {
+		return JSON.parse(text);
+	} catch {
+		return text;
+	}
+}
+
 // ─── Create MCP Server with tool handlers (one per request) ─────────
 
 function createMcpServer(
 	serverName: string,
 	serverVersion: string,
 	toolMap: Map<string, DiscoveredTool>,
+	toolListResponse: {
+		tools: Array<{
+			name: string;
+			description: string;
+			inputSchema: FlattenResult["schema"];
+		}>;
+	},
 	rootApp: Elysia,
+	originalRequest: Request,
 ): McpServer {
 	const mcpServer = new McpServer(
 		{ name: serverName, version: serverVersion },
@@ -200,14 +212,6 @@ function createMcpServer(
 	// We bypass McpServer's registerTool() because our tools use pre-built
 	// JSON Schema from flattenSchemas(), not Zod schemas.
 	const server = mcpServer.server;
-
-	const toolListResponse = {
-		tools: [...toolMap.values()].map((t) => ({
-			name: t.name,
-			description: t.description,
-			inputSchema: t.flatten.schema,
-		})),
-	};
 
 	server.setRequestHandler(ListToolsRequestSchema, () => toolListResponse);
 
@@ -224,30 +228,10 @@ function createMcpServer(
 
 		const args = request.params.arguments ?? {};
 
-		const ctx = mcpContext.getStore();
-		if (!ctx) {
-			return {
-				isError: true,
-				content: [{ type: "text" as const, text: "Internal error: missing MCP request context" }],
-			};
-		}
-
 		// Build a synthetic request and run through the full Elysia lifecycle
-		const syntheticRequest = buildRequest(tool, args, ctx.request);
+		const syntheticRequest = buildRequest(tool, args, originalRequest);
 		const response = await rootApp.handle(syntheticRequest);
-
-		let data: unknown;
-		const contentType = response.headers.get("content-type") ?? "";
-		const text = await response.text();
-		if (contentType.includes("application/json") && text.length > 0) {
-			try {
-				data = JSON.parse(text);
-			} catch {
-				data = text;
-			}
-		} else {
-			data = text;
-		}
+		const data = await parseResponseData(response);
 
 		if (!response.ok) {
 			return {
@@ -296,6 +280,13 @@ export function mcp(options: McpPluginOptions = {}) {
 			}
 			toolMap.set(tool.name, tool);
 		}
+		const toolListResponse = {
+			tools: [...toolMap.values()].map((tool) => ({
+				name: tool.name,
+				description: tool.description,
+				inputSchema: tool.flatten.schema,
+			})),
+		};
 
 		if (tools.length === 0) {
 			console.warn("[mcp] No MCP-eligible routes found — MCP server will have no tools");
@@ -303,26 +294,24 @@ export function mcp(options: McpPluginOptions = {}) {
 			console.info(`[mcp] Discovered ${tools.length} tool(s): ${tools.map((t) => t.name).join(", ")}`);
 		}
 
-		return app.post(path, ({ request, body }: { request: Request; body: unknown }) => {
-			return mcpContext.run({ request }, async () => {
-				const transport = new WebStandardStreamableHTTPServerTransport({
-					sessionIdGenerator: undefined,
-					enableJsonResponse: true,
-				});
-
-				// Create a fresh McpServer per request — the MCP SDK's
-				// Protocol.connect() throws if the server is already connected,
-				// so reusing a single instance across concurrent requests would fail.
-				const server = createMcpServer(name, version, toolMap, app);
-				await server.connect(transport);
-				try {
-					return await transport.handleRequest(request, {
-						parsedBody: body,
-					});
-				} finally {
-					await transport.close();
-				}
+		return app.post(path, async ({ request, body }: { request: Request; body: unknown }) => {
+			const transport = new WebStandardStreamableHTTPServerTransport({
+				sessionIdGenerator: undefined,
+				enableJsonResponse: true,
 			});
+
+			// Create a fresh McpServer per request — the MCP SDK's
+			// Protocol.connect() throws if the server is already connected,
+			// so reusing a single instance across concurrent requests would fail.
+			const server = createMcpServer(name, version, toolMap, toolListResponse, app, request);
+			await server.connect(transport);
+			try {
+				return await transport.handleRequest(request, {
+					parsedBody: body,
+				});
+			} finally {
+				await transport.close();
+			}
 		});
 	};
 }
