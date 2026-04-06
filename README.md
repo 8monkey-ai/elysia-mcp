@@ -10,7 +10,7 @@ The [Model Context Protocol](https://modelcontextprotocol.io/) lets AI agents di
 
 ## Key highlights
 
-- 🔄 **Zero duplication** — tool names, descriptions, and input schemas are derived from your existing route definitions. The same `detail.summary` and `description` fields that power your OpenAPI/Swagger docs also drive MCP tool discovery — write once, serve both humans and AI agents
+- 🔄 **Zero duplication** — tool names, descriptions, and input schemas are derived from your existing route definitions. OpenAPI metadata such as `detail.operationId` and `detail.summary` also drive MCP tool discovery — write once, serve both humans and AI agents
 - 🔌 **Any schema library** — works with TypeBox, Zod, Valibot, or any validation library supported by Elysia via [Standard Schema](https://github.com/standard-schema/standard-schema)
 - ⚡ **Full lifecycle** — MCP tool calls go through `app.handle()`, so derive, resolve, beforeHandle, afterHandle, error hooks, and all plugins run exactly as they do for normal HTTP requests
 - 🔑 **Header forwarding** — auth tokens, cookies, and other headers from the MCP request are forwarded to tool invocations, so your existing auth middleware works without changes
@@ -64,9 +64,15 @@ Use `detail.summary` to describe what the tool does. This becomes the MCP tool d
 
 ```typescript
 .get("/users", () => db.users.findAll(), {
-  detail: { summary: "List all users in the system" },
+  detail: {
+    operationId: "list_users",
+    summary: "List all users in the system",
+    mcp: true,
+  },
 })
 ```
+
+If `operationId` is omitted, the plugin falls back to generated names like `list_users` or `get_user`.
 
 ### Property-level: schema `description`
 
@@ -115,12 +121,14 @@ Or flip the default — set `allRoutes: false` to require explicit opt-in:
 
 ## Overriding tool names and descriptions
 
-Auto-generated names follow a `{verb}_{resource}` convention. Override with `mcp: { name, description }`:
+Auto-generated names follow a `{verb}_{resource}` convention. If you want an explicit tool name, set `detail.operationId`:
 
 ```typescript
 .get("/items", handler, {
   detail: {
-    mcp: { name: "search_items", description: "Full-text search across all items" },
+    operationId: "search_items",
+    summary: "Full-text search across all items",
+    mcp: true,
   },
 })
 ```

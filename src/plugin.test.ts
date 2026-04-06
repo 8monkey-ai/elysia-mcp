@@ -161,8 +161,9 @@ function createTestApp() {
           id: t.String({ description: "The user ID" }),
         }),
         detail: {
+          operationId: "get_user",
           summary: "Get user by ID",
-          mcp: { name: "get_user", description: "Retrieve a single user" },
+          mcp: true,
         },
       },
     )
@@ -313,7 +314,7 @@ describe("MCP Plugin Integration", () => {
         }),
         {
           body: t.Object({}),
-          detail: { mcp: { name: "create_empty_body" } },
+          detail: { operationId: "create_empty_body", mcp: true },
         },
       )
       .use(mcp({ name: "test" }));
@@ -339,7 +340,7 @@ describe("MCP Plugin Integration", () => {
           body: t.Object({
             note: t.Optional(t.String({ description: "Optional note" })),
           }),
-          detail: { mcp: { name: "update_optional_body" } },
+          detail: { operationId: "update_optional_body", mcp: true },
         },
       )
       .use(mcp({ name: "test" }));
@@ -407,12 +408,12 @@ describe("MCP Plugin Integration", () => {
     expect(listUsers?.description).toBe("List all users");
   });
 
-  it("uses explicit mcp description when provided", async () => {
+  it("uses detail.summary for tool descriptions", async () => {
     await initializeMcp(app);
     const result = await listTools(app);
 
     const getUser = result.result.tools.find((tool) => tool.name === "get_user");
-    expect(getUser?.description).toBe("Retrieve a single user");
+    expect(getUser?.description).toBe("Get user by ID");
   });
 
   it("includes input schema with property descriptions", async () => {

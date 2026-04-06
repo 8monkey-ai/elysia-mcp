@@ -11,13 +11,13 @@
  * hooks, and all plugins).
  */
 
-import type { Elysia } from "elysia";
+import type { DocumentDecoration, Elysia } from "elysia";
 
 // ─── Module Augmentation ────────────────────────────────────────────
 // Extend Elysia's DocumentDecoration so `detail: { mcp: ... }` is type-safe.
 declare module "elysia" {
   interface DocumentDecoration {
-    mcp?: boolean | McpToolMeta;
+    mcp?: boolean;
   }
 }
 
@@ -50,13 +50,6 @@ export interface McpPluginOptions {
   allRoutes?: boolean;
 }
 
-export interface McpToolMeta {
-  name?: string;
-  description?: string;
-}
-
-/** Shape of `detail.mcp` — `true`/`false` or an override object */
-export type McpDetailValue = boolean | McpToolMeta;
 
 interface DiscoveredTool {
   name: string;
@@ -67,12 +60,8 @@ interface DiscoveredTool {
   outputSchema?: FlatJsonSchema;
 }
 
-// ─── Route Discovery ─────────────────────────────────────────────────
 type RouteHooks = {
-  detail?: {
-    mcp?: boolean | McpToolMeta;
-    summary?: string;
-  };
+  detail?: DocumentDecoration;
   params?: unknown;
   query?: unknown;
   body?: unknown;
@@ -88,20 +77,19 @@ function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const hooks = route.hooks as RouteHooks;
     const detail = hooks.detail;
-    const mcpValue = detail?.mcp;
+    const mcpEnabled = detail?.mcp;
 
     // Skip routes that are explicitly opted out
-    if (mcpValue === false) continue;
+    if (mcpEnabled === false) continue;
 
     // In opt-in mode, skip routes without `detail.mcp`
-    if (!allRoutes && (mcpValue === undefined || mcpValue === null)) continue;
+    if (!allRoutes && (mcpEnabled === undefined || mcpEnabled === null)) continue;
 
-    const mcpMeta = typeof mcpValue === "object" && mcpValue !== null ? mcpValue : undefined;
     const method = route.method.toUpperCase();
     const routePath = route.path;
-    const name = mcpMeta?.name ?? deriveToolName(method, routePath);
+    const name = detail?.operationId ?? deriveToolName(method, routePath);
     const pathSegments = routePath.split("/");
-    const description = mcpMeta?.description ?? detail?.summary ?? `${method} ${routePath}`;
+    const description = detail?.summary ?? `${method} ${routePath}`;
 
     const flatten = flattenSchemas(name, {
       params: asSchemaLike(hooks.params),
