@@ -15,7 +15,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 import type { Elysia } from "elysia";
 
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
 	CallToolRequestSchema,
 	ListToolsRequestSchema,
@@ -182,11 +182,16 @@ function createMcpServer(
 	serverVersion: string,
 	toolMap: Map<string, DiscoveredTool>,
 	rootApp: Elysia,
-): Server {
-	const server = new Server(
+): McpServer {
+	const mcpServer = new McpServer(
 		{ name: serverName, version: serverVersion },
 		{ capabilities: { tools: {} } },
 	);
+
+	// Use the underlying Server for custom request handlers.
+	// We bypass McpServer's registerTool() because our tools use pre-built
+	// JSON Schema from flattenSchemas(), not Zod schemas.
+	const server = mcpServer.server;
 
 	const toolListResponse = {
 		tools: [...toolMap.values()].map((t) => ({
@@ -246,7 +251,7 @@ function createMcpServer(
 		return toMcpContent(data);
 	});
 
-	return server;
+	return mcpServer;
 }
 
 // ─── Plugin ──────────────────────────────────────────────────────────
