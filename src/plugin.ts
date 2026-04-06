@@ -50,7 +50,6 @@ export interface McpPluginOptions {
   allRoutes?: boolean;
 }
 
-
 interface DiscoveredTool {
   name: string;
   description: string;
