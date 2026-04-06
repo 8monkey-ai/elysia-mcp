@@ -175,7 +175,7 @@ function buildRequest(
 	});
 }
 
-// ─── Create MCP Server with tool handlers (reused across requests) ───
+// ─── Create MCP Server with tool handlers (one per request) ─────────
 
 function createMcpServer(
 	serverName: string,
@@ -295,11 +295,6 @@ export function mcp(options: McpPluginOptions = {}) {
 			console.info(`[mcp] Discovered ${tools.length} tool(s): ${tools.map((t) => t.name).join(", ")}`);
 		}
 
-		// Create the MCP server once at startup — tool handlers and list
-		// response are fixed for the lifetime of the app. Only the transport
-		// is created per-request (stateless mode, no session tracking).
-		const server = createMcpServer(name, version, toolMap, app);
-
 		return app.post(path, ({ request, body }: { request: Request; body: unknown }) => {
 			return mcpContext.run({ request }, async () => {
 				const transport = new WebStandardStreamableHTTPServerTransport({
@@ -307,6 +302,10 @@ export function mcp(options: McpPluginOptions = {}) {
 					enableJsonResponse: true,
 				});
 
+				// Create a fresh McpServer per request — the MCP SDK's
+				// Protocol.connect() throws if the server is already connected,
+				// so reusing a single instance across concurrent requests would fail.
+				const server = createMcpServer(name, version, toolMap, app);
 				await server.connect(transport);
 				try {
 					return await transport.handleRequest(request, {
