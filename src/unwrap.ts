@@ -5,31 +5,39 @@
  * This module extracts the raw data for MCP JSON serialisation.
  */
 
+import type { ElysiaCustomStatusResponse } from "elysia";
+import type { TextContent } from "@modelcontextprotocol/sdk/types.js";
+
 /** Symbol used by Elysia's status() helper to wrap responses */
 const STATUS_SYMBOL = Symbol.for("ElysiaCustomStatusResponse");
+type StatusResponse = Pick<ElysiaCustomStatusResponse<number, unknown>, "response">;
+type McpTextContent = { content: TextContent[] };
+
+function isStatusResponse(value: unknown): value is StatusResponse {
+	return value !== null
+		&& value !== undefined
+		&& typeof value === "object"
+		&& STATUS_SYMBOL in value
+		&& "response" in value;
+}
+
+function toTextContent(text: string): TextContent {
+	return { type: "text", text };
+}
 
 /**
  * Unwrap an Elysia `status()` response to get the raw data.
  * If the value is not a status wrapper, returns it unchanged.
  */
 export function unwrapStatus(value: unknown): unknown {
-	if (value === null || value === undefined || typeof value !== "object") return value;
-
-	// Elysia's status() returns an object with [Symbol.for('ElysiaCustomStatusResponse')]
-	if (STATUS_SYMBOL in value) {
-		return (value as Record<string | symbol, unknown>)["response"];
-	}
-
-	return value;
+	return isStatusResponse(value) ? value.response : value;
 }
 
 /**
  * Format a handler result as MCP tool content.
  * Always returns `{ content: [{ type: "text", text: string }] }`.
  */
-export function toMcpContent(data: unknown): {
-	content: Array<{ type: "text"; text: string }>;
-} {
+export function toMcpContent(data: unknown): McpTextContent {
 	const unwrapped = unwrapStatus(data);
 	let text: string;
 	if (typeof unwrapped === "string") {
@@ -43,6 +51,6 @@ export function toMcpContent(data: unknown): {
 	}
 
 	return {
-		content: [{ type: "text" as const, text }],
+		content: [toTextContent(text)],
 	};
 }
