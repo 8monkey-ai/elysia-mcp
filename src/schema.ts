@@ -54,8 +54,35 @@ function asObjectRecord(value: unknown): JsonObject | undefined {
   return value as JsonObject;
 }
 
+/**
+ * Convert a schema value to a JSON Schema object.
+ *
+ * Handles two families:
+ * - **JSON Schema / TypeBox** — already a plain JSON Schema object with
+ *   `type`, `properties`, `required` etc. Returned as-is.
+ * - **Standard Schema** (Zod ≥ 4, Valibot, ArkType, etc.) — detected via
+ *   the `~standard.jsonSchema` convention and converted by calling the
+ *   vendor's `input()` converter, which returns a proper JSON Schema object.
+ */
 export function asSchemaLike(value: unknown): SchemaLike {
-  return asObjectRecord(value);
+  const record = asObjectRecord(value);
+  if (record === undefined) return undefined;
+
+  // Standard Schema detection: libraries like Zod 4 expose a
+  // `~standard` property with a `jsonSchema` object containing an
+  // `input()` function that returns the JSON Schema representation.
+  const standard = asObjectRecord(record["~standard"]);
+  if (standard !== undefined) {
+    const jsonSchemaAccessor = asObjectRecord(standard["jsonSchema"]);
+    if (jsonSchemaAccessor !== undefined && typeof jsonSchemaAccessor["input"] === "function") {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const toJsonSchema = jsonSchemaAccessor["input"] as () => unknown;
+      const converted = asObjectRecord(toJsonSchema());
+      if (converted !== undefined) return converted;
+    }
+  }
+
+  return record;
 }
 
 function asObjectSchema(schema: SchemaLike): JsonObject | undefined {

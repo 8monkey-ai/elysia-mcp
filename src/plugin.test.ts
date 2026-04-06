@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 
 import type { ListToolsResult, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { Elysia, t } from "elysia";
+import { z } from "zod";
 
 import { mcp } from "./plugin.js";
 
@@ -758,5 +759,248 @@ describe("MCP Plugin Lifecycle Verification", () => {
 
     const data = parseContent(result);
     expect(data["auth"]).toBe("Bearer test-token");
+  });
+});
+
+// ─── Zod / Standard Schema integration tests ───────────────────────
+
+describe("MCP Plugin with Zod schemas", () => {
+  let app: ElysiaApp;
+
+  beforeAll(async () => {
+    app = new Elysia()
+      .get(
+        "/products",
+        () => [
+          { id: 1, name: "Widget" },
+          { id: 2, name: "Gadget" },
+        ],
+        {
+          query: z.object({
+            category: z.string().optional().describe("Filter by category"),
+          }),
+          detail: { summary: "List products", mcp: true },
+        },
+      )
+      .get(
+        "/products/:id",
+        ({ params }) => ({ id: params["id"], name: "Widget", price: 9.99 }),
+        {
+          params: z.object({ id: z.string().describe("Product ID") }),
+          response: z.object({
+            id: z.string().describe("Product ID"),
+            name: z.string().describe("Product name"),
+            price: z.number().describe("Price in USD"),
+          }),
+          detail: { operationId: "get_product", summary: "Get product by ID", mcp: true },
+        },
+      )
+      .post(
+        "/products",
+        ({ body }) => ({ id: 3, ...body }),
+        {
+          body: z.object({
+            name: z.string().describe("Product name"),
+            price: z.number().describe("Price in USD"),
+          }),
+          detail: { summary: "Create a product", mcp: true },
+        },
+      )
+      .patch(
+        "/products/:id",
+        ({ params, body }) => ({ id: params["id"], ...body }),
+        {
+          params: z.object({ id: z.string().describe("Product ID") }),
+          body: z.object({
+            name: z.string().optional().describe("Updated name"),
+            price: z.number().optional().describe("Updated price"),
+          }),
+          detail: { summary: "Update a product", mcp: true },
+        },
+      )
+      .use(mcp({ name: "zod-test-api", version: "0.1.0" }));
+
+    await app.handle(new Request("http://localhost/health"));
+  });
+
+  it("discovers Zod-based routes as tools", async () => {
+    await initializeMcp(app);
+    const result = await listTools(app);
+
+    const toolNames = result.result.tools.map((tool) => tool.name);
+    expect(toolNames).toContain("list_products");
+    expect(toolNames).toContain("get_product");
+    expect(toolNames).toContain("create_product");
+    expect(toolNames).toContain("update_product");
+  });
+
+  it("includes Zod-derived input schema with descriptions", async () => {
+    await initializeMcp(app);
+    const result = await listTools(app);
+
+    const getProduct = result.result.tools.find((tool) => tool.name === "get_product");
+    expect(getProduct).toBeDefined();
+    expect(getProduct?.inputSchema.type).toBe("object");
+    expect(getProduct?.inputSchema.required).toContain("id");
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const props = getProduct?.inputSchema.properties as
+      | Record<string, { description?: string; type?: string }>
+      | undefined;
+    expect(props?.["id"]?.type).toBe("string");
+    expect(props?.["id"]?.description).toBe("Product ID");
+  });
+
+  it("merges Zod params + body into a flat input schema", async () => {
+    await initializeMcp(app);
+    const result = await listTools(app);
+
+    const updateProduct = result.result.tools.find((tool) => tool.name === "update_product");
+    expect(updateProduct).toBeDefined();
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const props = updateProduct?.inputSchema.properties as
+      | Record<string, { description?: string }>
+      | undefined;
+    expect(props).toHaveProperty("id"); // from params
+    expect(props).toHaveProperty("name"); // from body
+    expect(props).toHaveProperty("price"); // from body
+    expect(props?.["id"]?.description).toBe("Product ID");
+    expect(props?.["name"]?.description).toBe("Updated name");
+
+    // id (params) should be required, name/price (optional body) should not
+    expect(updateProduct?.inputSchema.required).toContain("id");
+    expect(updateProduct?.inputSchema.required).not.toContain("name");
+    expect(updateProduct?.inputSchema.required).not.toContain("price");
+  });
+
+  it("calls a Zod GET tool with path parameters", async () => {
+    await initializeMcp(app);
+    const result = await callTool(app, "get_product", { id: "42" });
+
+    const data = parseContent(result);
+    expect(data["id"]).toBe("42");
+    expect(data["name"]).toBe("Widget");
+    expect(data["price"]).toBe(9.99);
+  });
+
+  it("calls a Zod POST tool with body", async () => {
+    await initializeMcp(app);
+    const result = await callTool(app, "create_product", {
+      name: "Sprocket",
+      price: 4.99,
+    });
+
+    const data = parseContent(result);
+    expect(data["name"]).toBe("Sprocket");
+    expect(data["price"]).toBe(4.99);
+  });
+
+  it("calls a Zod PATCH tool with params and body", async () => {
+    await initializeMcp(app);
+    const result = await callTool(app, "update_product", {
+      id: "42",
+      name: "Updated Widget",
+    });
+
+    const data = parseContent(result);
+    expect(data["id"]).toBe("42");
+    expect(data["name"]).toBe("Updated Widget");
+  });
+
+  it("includes outputSchema from Zod response schema", async () => {
+    await initializeMcp(app);
+    const result = await listTools(app);
+
+    const getProduct = result.result.tools.find((tool) => tool.name === "get_product");
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const outputSchema = (getProduct as Record<string, unknown>)["outputSchema"] as
+      | Record<string, unknown>
+      | undefined;
+    expect(outputSchema).toBeDefined();
+    expect(outputSchema?.["type"]).toBe("object");
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const props = outputSchema?.["properties"] as
+      | Record<string, Record<string, unknown>>
+      | undefined;
+    expect(props?.["id"]?.["description"]).toBe("Product ID");
+    expect(props?.["name"]?.["description"]).toBe("Product name");
+    expect(props?.["price"]?.["description"]).toBe("Price in USD");
+  });
+
+  it("returns structuredContent for Zod tools with outputSchema", async () => {
+    await initializeMcp(app);
+    const result = await callTool(app, "get_product", { id: "7" });
+
+    // Should have both content and structuredContent
+    expect(result.result.content[0]?.type).toBe("text");
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const structured = (result.result as Record<string, unknown>)["structuredContent"] as
+      | Record<string, unknown>
+      | undefined;
+    expect(structured).toBeDefined();
+    expect(structured?.["id"]).toBe("7");
+    expect(structured?.["name"]).toBe("Widget");
+    expect(structured?.["price"]).toBe(9.99);
+  });
+});
+
+describe("MCP Plugin with mixed TypeBox and Zod schemas", () => {
+  it("discovers tools from both TypeBox and Zod routes", async () => {
+    const app = new Elysia()
+      .get("/tb-route", () => ({ source: "typebox" }), {
+        query: t.Object({ q: t.Optional(t.String({ description: "Query" })) }),
+        detail: { summary: "TypeBox route", mcp: true },
+      })
+      .get("/zod-route", () => ({ source: "zod" }), {
+        query: z.object({ q: z.string().optional().describe("Query") }),
+        detail: { summary: "Zod route", mcp: true },
+      })
+      .use(mcp({ name: "mixed-test" }));
+
+    await app.handle(new Request("http://localhost/health"));
+    await initializeMcp(app);
+    const result = await listTools(app);
+
+    const toolNames = result.result.tools.map((tool) => tool.name);
+    expect(toolNames).toContain("list_tb-route");
+    expect(toolNames).toContain("list_zod-route");
+
+    // Both should have the query parameter in their input schemas
+    for (const name of ["list_tb-route", "list_zod-route"]) {
+      const found = result.result.tools.find((tool) => tool.name === name);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const props = found?.inputSchema.properties as
+        | Record<string, { description?: string }>
+        | undefined;
+      expect(props?.["q"]?.description).toBe("Query");
+    }
+  });
+
+  it("calls both TypeBox and Zod tools in the same app", async () => {
+    const app = new Elysia()
+      .post("/tb-create", ({ body }) => ({ ...body, source: "typebox" }), {
+        body: t.Object({ name: t.String({ description: "Name" }) }),
+        detail: { operationId: "tb_create", mcp: true },
+      })
+      .post("/zod-create", ({ body }) => ({ ...body, source: "zod" }), {
+        body: z.object({ name: z.string().describe("Name") }),
+        detail: { operationId: "zod_create", mcp: true },
+      })
+      .use(mcp({ name: "mixed-test" }));
+
+    await app.handle(new Request("http://localhost/health"));
+    await initializeMcp(app);
+
+    const tbResult = await callTool(app, "tb_create", { name: "TypeBox" });
+    const tbData = parseContent(tbResult);
+    expect(tbData["name"]).toBe("TypeBox");
+    expect(tbData["source"]).toBe("typebox");
+
+    const zodResult = await callTool(app, "zod_create", { name: "Zod" });
+    const zodData = parseContent(zodResult);
+    expect(zodData["name"]).toBe("Zod");
+    expect(zodData["source"]).toBe("zod");
   });
 });

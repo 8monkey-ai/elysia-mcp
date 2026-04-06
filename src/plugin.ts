@@ -101,7 +101,7 @@ function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
     }
 
     // Extract response schema for MCP outputSchema (must be type: "object")
-    const outputSchema = cleanResponseSchema(hooks.response);
+    const outputSchema = cleanResponseSchema(asSchemaLike(hooks.response));
 
     if (hooks.response !== undefined && hooks.response !== null && outputSchema === undefined) {
       console.warn(
