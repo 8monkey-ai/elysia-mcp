@@ -63,18 +63,26 @@ interface DiscoveredTool {
 }
 
 // ─── Route Discovery ─────────────────────────────────────────────────
+type RouteHooks = {
+  detail?: {
+    mcp?: boolean | McpToolMeta;
+    summary?: string;
+  };
+  params?: unknown;
+  query?: unknown;
+  body?: unknown;
+};
 
 function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
   const tools: DiscoveredTool[] = [];
-  const routes = app.routes;
 
-  for (const route of routes) {
-    // Elysia's route.hooks is typed as `any` — cast to Record
+  for (const route of app.routes) {
+    // Elysia route introspection loses the concrete hook type, but these are
+    // the fields stored on route hooks that this plugin reads.
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const hooks = route.hooks as Record<string, unknown>;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const detail = hooks["detail"] as Record<string, unknown> | undefined;
-    const mcpValue = detail?.["mcp"];
+    const hooks = route.hooks as RouteHooks;
+    const detail = hooks.detail;
+    const mcpValue = detail?.mcp;
 
     // Skip routes that are explicitly opted out
     if (mcpValue === false) continue;
@@ -82,31 +90,21 @@ function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
     // In opt-in mode, skip routes without `detail.mcp`
     if (!allRoutes && (mcpValue === undefined || mcpValue === null)) continue;
 
-    const mcpMeta =
-      typeof mcpValue === "object" && mcpValue !== null
-        ? // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          (mcpValue as Record<string, unknown>)
-        : undefined;
+    const mcpMeta = typeof mcpValue === "object" && mcpValue !== null ? mcpValue : undefined;
     const method = route.method.toUpperCase();
     const routePath = route.path;
-
-    const mcpName = typeof mcpMeta?.["name"] === "string" ? mcpMeta["name"] : undefined;
-    const mcpDescription =
-      typeof mcpMeta?.["description"] === "string" ? mcpMeta["description"] : undefined;
-    const name = mcpName ?? deriveToolName(method, routePath);
+    const name = mcpMeta?.name ?? deriveToolName(method, routePath);
     const pathSegments = routePath.split("/");
     const hasBody = method !== "GET" && method !== "HEAD";
-
-    const summary = detail?.["summary"];
     const description =
-      mcpDescription ??
-      (typeof summary === "string" ? summary : undefined) ??
+      mcpMeta?.description ??
+      detail?.summary ??
       `${method} ${routePath}`;
 
     const flatten = flattenSchemas(name, {
-      params: asSchemaLike(hooks["params"]),
-      query: asSchemaLike(hooks["query"]),
-      body: asSchemaLike(hooks["body"]),
+      params: asSchemaLike(hooks.params),
+      query: asSchemaLike(hooks.query),
+      body: asSchemaLike(hooks.body),
     });
 
     for (const warning of flatten.warnings) {
