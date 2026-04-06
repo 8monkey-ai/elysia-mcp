@@ -158,7 +158,7 @@ export function flattenSchemas(
   }
 
   return {
-    schema: { type: "object", properties, required: [...required] },
+    schema: { type: "object", properties, required: Array.from(required) },
     origins,
     warnings,
   };
@@ -174,14 +174,13 @@ export function flattenSchemas(
  * MCP requires `outputSchema` to have `type: "object"` at the root.
  * This function handles three shapes from Elysia:
  * - A single schema with `type: "object"` → used directly
- * - A status-code map like `{ 200: schema, 400: schema }` → extracts the 200 schema
+ * - A status-code map like `{ 200: schema, 201: schema, 400: schema }` → extracts
+ *   the 200 schema when present, otherwise the first object-valued 2xx schema
  * - Anything else (arrays, primitives, missing) → returns undefined
  *
  * TypeBox-internal keys (starting with `[`) are stripped from properties.
  */
-export function cleanResponseSchema(
-  raw: unknown,
-): FlatJsonSchema | undefined {
+export function cleanResponseSchema(raw: unknown): FlatJsonSchema | undefined {
   const record = asObjectRecord(raw);
   if (record === undefined) return undefined;
 
@@ -190,10 +189,14 @@ export function cleanResponseSchema(
     return stripInternalKeys(record);
   }
 
-  // Case 2: status-code map — extract the 200 schema
-  const twoHundred = asObjectRecord(record["200"]);
-  if (twoHundred !== undefined && twoHundred["type"] === "object") {
-    return stripInternalKeys(twoHundred);
+  // Case 2: status-code map — prefer 200, then any other object-valued 2xx schema
+  const successStatuses = ["200", "201", "202"] as const;
+
+  for (const status of successStatuses) {
+    const candidate = asObjectRecord(record[status]);
+    if (candidate !== undefined && candidate["type"] === "object") {
+      return stripInternalKeys(candidate);
+    }
   }
 
   return undefined;
@@ -217,9 +220,7 @@ function stripInternalKeys(schema: Record<string, unknown>): FlatJsonSchema {
   }
 
   const req = schema["required"];
-  const required = Array.isArray(req)
-    ? req.filter((s): s is string => typeof s === "string")
-    : [];
+  const required = Array.isArray(req) ? req.filter((s): s is string => typeof s === "string") : [];
 
   return { type: "object", properties, required };
 }

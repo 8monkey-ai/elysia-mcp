@@ -125,6 +125,21 @@ describe("cleanResponseSchema", () => {
     expect(result?.properties).not.toHaveProperty("error");
   });
 
+  it("falls back to an object-valued 2xx schema when 200 is absent", () => {
+    const schema = {
+      201: Type.Object({ id: Type.String() }),
+      202: Type.Object({ accepted: Type.Boolean() }),
+      400: Type.Object({ error: Type.String() }),
+    };
+
+    const result = cleanResponseSchema(schema);
+    expect(result).toBeDefined();
+    expect(result?.type).toBe("object");
+    expect(result?.properties).toHaveProperty("id");
+    expect(result?.properties).not.toHaveProperty("accepted");
+    expect(result?.properties).not.toHaveProperty("error");
+  });
+
   it("returns undefined for array schemas", () => {
     const schema = Type.Array(Type.Object({ id: Type.Number() }));
     expect(cleanResponseSchema(schema)).toBeUndefined();
