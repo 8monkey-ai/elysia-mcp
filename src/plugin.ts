@@ -50,8 +50,8 @@ export interface McpToolMeta {
   description?: string;
 }
 
-/** Shape of `detail.mcp` — either `true` or an override object */
-export type McpDetailValue = true | McpToolMeta;
+/** Shape of `detail.mcp` — `true`/`false` or an override object */
+export type McpDetailValue = boolean | McpToolMeta;
 
 interface DiscoveredTool {
   name: string;

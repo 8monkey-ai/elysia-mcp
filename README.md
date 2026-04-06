@@ -154,7 +154,7 @@ When an MCP client calls a tool:
 1. The flat args are unflattened back into `params`, `query`, and `body`
 2. A synthetic HTTP request is built with the correct method, path, query string, body, and headers from the original MCP request
 3. `app.handle(request)` runs the full Elysia lifecycle — derive, resolve, beforeHandle, the handler, afterHandle, and error hooks
-4. The response is unwrapped (handles `status()` wrappers) and returned as MCP content
+4. The response body is parsed and returned as MCP text content
 
 This means your auth middleware, rate limiting, validation, and every other plugin work exactly the same for MCP calls as they do for REST calls.
 

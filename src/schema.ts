@@ -104,7 +104,7 @@ export function flattenSchemas(
   },
 ): FlattenResult {
   const properties: Record<string, JsonSchemaProperty> = {};
-  const required: string[] = [];
+  const required = new Set<string>();
   const origins: PropertyOrigin[] = [];
   const warnings: string[] = [];
   const seen = new Map<string, RequestPart>();
@@ -150,7 +150,7 @@ export function flattenSchemas(
 
       // All params are required; query/body follow the schema's required array
       if (requestPart === "params" || requiredSet.has(name)) {
-        required.push(name);
+        required.add(name);
       }
 
       origins.push({ name, part: requestPart });
@@ -158,7 +158,7 @@ export function flattenSchemas(
   }
 
   return {
-    schema: { type: "object", properties, required },
+    schema: { type: "object", properties, required: [...required] },
     origins,
     warnings,
   };
@@ -183,7 +183,7 @@ export function unflattenArgs(
   };
 
   for (const origin of origins) {
-    if (origin.name in args) {
+    if (Object.hasOwn(args, origin.name)) {
       requestParts[origin.part][origin.name] = args[origin.name];
     }
   }

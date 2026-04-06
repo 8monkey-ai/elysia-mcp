@@ -1,29 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { toMcpContent, unwrapStatus } from "./unwrap.js";
-
-describe("unwrapStatus", () => {
-  it("returns plain objects unchanged", () => {
-    const obj = { id: 1, name: "Alice" };
-    expect(unwrapStatus(obj)).toEqual(obj);
-  });
-
-  it("returns primitives unchanged", () => {
-    expect(unwrapStatus("hello")).toBe("hello");
-    expect(unwrapStatus(42)).toBe(42);
-    expect(unwrapStatus(null)).toBe(null);
-    // eslint-disable-next-line unicorn/no-useless-undefined
-    expect(unwrapStatus(undefined)).toBe(undefined);
-  });
-
-  it("unwraps Elysia status() responses", () => {
-    const wrapped = {
-      [Symbol.for("ElysiaCustomStatusResponse")]: 200,
-      response: { id: 1, name: "Alice" },
-    };
-    expect(unwrapStatus(wrapped)).toEqual({ id: 1, name: "Alice" });
-  });
-});
+import { toMcpContent } from "./unwrap.js";
 
 describe("toMcpContent", () => {
   it("formats objects as JSON text content", () => {
@@ -38,12 +15,7 @@ describe("toMcpContent", () => {
     expect(result.content[0]?.text).toBe("hello world");
   });
 
-  it("unwraps status() before formatting", () => {
-    const wrapped = {
-      [Symbol.for("ElysiaCustomStatusResponse")]: 200,
-      response: { ok: true },
-    };
-    const result = toMcpContent(wrapped);
-    expect(result.content[0]?.text).toBe('{"ok":true}');
+  it("formats null as JSON", () => {
+    expect(toMcpContent(null).content[0]?.text).toBe("null");
   });
 });
