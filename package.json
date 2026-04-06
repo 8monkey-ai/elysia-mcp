@@ -40,7 +40,7 @@
     "typecheck": "oxlint --type-check",
     "test": "bun test",
     "check": "bun lint && bun typecheck",
-    "fix": "bun lint:staged && bun fmt:staged"
+    "fix": "bun lint:staged && bun format:staged"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0"
