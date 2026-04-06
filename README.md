@@ -10,20 +10,19 @@ The [Model Context Protocol](https://modelcontextprotocol.io/) lets AI agents di
 
 ## Key highlights
 
-- **Zero duplication** — tool names, descriptions, and input schemas are derived from your existing route definitions. The same `detail.summary` and TypeBox `description` fields that power your OpenAPI/Swagger docs also drive MCP tool discovery — write once, serve both humans and AI agents
-- **Full lifecycle** — MCP tool calls go through `app.handle()`, so derive, resolve, beforeHandle, afterHandle, error hooks, and all plugins run exactly as they do for normal HTTP requests
-- **Header forwarding** — auth tokens, cookies, and other headers from the MCP request are forwarded to tool invocations, so your existing auth middleware works without changes
-- **Schema flattening** — params, query, and body schemas are merged into a single flat MCP input schema with property origins tracked for correct unflattening
-- **Startup diagnostics** — warns on name collisions across params/query/body, missing property descriptions, and duplicate tool names
-- **Response unwrapping** — automatically unwraps Elysia `status()` responses so MCP clients receive clean data
-- **Smart naming** — `GET /users` becomes `list_users`, `GET /users/:id` becomes `get_user`, `POST /users` becomes `create_user`, and nested paths like `GET /users/:uid/posts` become `list_user_posts`
+- 🔄 **Zero duplication** — tool names, descriptions, and input schemas are derived from your existing route definitions. The same `detail.summary` and `description` fields that power your OpenAPI/Swagger docs also drive MCP tool discovery — write once, serve both humans and AI agents
+- 🔌 **Any schema library** — works with TypeBox, Zod, Valibot, or any validation library supported by Elysia via [Standard Schema](https://github.com/standard-schema/standard-schema)
+- ⚡ **Full lifecycle** — MCP tool calls go through `app.handle()`, so derive, resolve, beforeHandle, afterHandle, error hooks, and all plugins run exactly as they do for normal HTTP requests
+- 🔑 **Header forwarding** — auth tokens, cookies, and other headers from the MCP request are forwarded to tool invocations, so your existing auth middleware works without changes
+- 📋 **Schema flattening** — params, query, and body schemas are merged into a single flat MCP input schema with property origins tracked for correct unflattening
+- 🏷️ **Smart naming** — `GET /users` becomes `list_users`, `GET /users/:id` becomes `get_user`, `POST /users` becomes `create_user`, and nested paths like `GET /users/:uid/posts` become `list_user_posts`
 
 ## How it differs from existing solutions
 
 Compared to [kerlos/elysia-mcp](https://github.com/kerlos/elysia-mcp) and [keithagroves/Elysia-mcp](https://github.com/keithagroves/Elysia-mcp), which require manual tool registration with separate Zod schemas and standalone handlers:
 
 - **Auto-discovery** — routes become tools automatically; no registration callbacks
-- **Schema reuse** — uses your existing TypeBox/Standard Schema definitions instead of duplicating with Zod
+- **Schema reuse** — uses your existing Elysia schema definitions (TypeBox, Zod, Valibot, or any [Standard Schema](https://github.com/standard-schema/standard-schema) provider) instead of duplicating separately
 - **Full lifecycle execution** — tool calls run through `app.handle()`, not standalone functions, so all middleware applies
 - **Streamable HTTP** — stateless POST endpoint instead of stateful sessions or SSE connections
 
@@ -69,9 +68,9 @@ Use `detail.summary` to describe what the tool does. This becomes the MCP tool d
 })
 ```
 
-### Property-level: TypeBox `description`
+### Property-level: schema `description`
 
-Add `description` to each TypeBox property. These become the MCP parameter descriptions **and** the OpenAPI property descriptions — the same metadata, no duplication:
+Add `description` to each schema property. These become the MCP parameter descriptions **and** the OpenAPI property descriptions — the same metadata, no duplication:
 
 ```typescript
 import { t } from "elysia";
