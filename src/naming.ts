@@ -82,10 +82,17 @@ export function deriveToolName(method: string, path: string): string {
 		upperMethod === "DELETE" ||
 		endsWithParam;
 
+	// Track original segment indices for non-param parts so we can check
+	// what follows each one (handles duplicate segment names correctly).
+	const partIndices: number[] = [];
+	for (let idx = 0; idx < segments.length; idx++) {
+		if (!isParam(segments[idx]!)) partIndices.push(idx);
+	}
+
 	// Singularise segments that are followed by a param, or (for single-resource
 	// methods) the last non-param segment
 	const named = parts.map((part, i) => {
-		const nextSegment = segments[segments.indexOf(part)! + 1];
+		const nextSegment = segments[partIndices[i]! + 1];
 		const followedByParam = nextSegment != null && isParam(nextSegment);
 
 		if (followedByParam || (singleResource && i === parts.length - 1)) {

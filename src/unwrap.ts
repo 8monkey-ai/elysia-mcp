@@ -32,7 +32,16 @@ export function toMcpContent(data: unknown): {
 	content: Array<{ type: "text"; text: string }>;
 } {
 	const unwrapped = unwrapStatus(data);
-	const text = typeof unwrapped === "string" ? unwrapped : JSON.stringify(unwrapped);
+	let text: string;
+	if (typeof unwrapped === "string") {
+		text = unwrapped;
+	} else {
+		try {
+			text = JSON.stringify(unwrapped);
+		} catch {
+			text = String(unwrapped);
+		}
+	}
 
 	return {
 		content: [{ type: "text" as const, text }],

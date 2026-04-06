@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 
 import { Elysia, t } from "elysia";
 
@@ -177,10 +177,6 @@ describe("MCP Plugin Integration", () => {
 		// Trigger route compilation (calls onStart handlers)
 		// Use app.handle with a dummy request to trigger initialization
 		await app.handle(new Request("http://localhost/health"));
-	});
-
-	afterAll(async () => {
-		// Clean up — no server to stop in test mode
 	});
 
 	it("responds to the /mcp endpoint", async () => {

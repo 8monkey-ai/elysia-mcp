@@ -23,6 +23,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { deriveToolName } from "./naming.js";
 import { flattenSchemas, unflattenArgs } from "./schema.js";
 import type { FlattenResult } from "./schema.js";
+import { toMcpContent } from "./unwrap.js";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -129,6 +130,15 @@ function buildRequest(
 
 	const method = tool.method;
 	const hasBody = method !== "GET" && method !== "HEAD" && method !== "DELETE";
+
+	// Sanitize content headers — the original values correspond to the
+	// JSON-RPC payload, not the synthetic request's body.
+	headers.delete("content-length");
+	if (!hasBody || Object.keys(body).length === 0) {
+		headers.delete("content-type");
+	} else {
+		headers.set("content-type", "application/json");
+	}
 	const bodyContent = hasBody && Object.keys(body).length > 0
 		? JSON.stringify(body)
 		: undefined;
@@ -199,16 +209,11 @@ function createMcpServer(
 		if (!response.ok) {
 			return {
 				isError: true,
-				content: [{ type: "text" as const, text: typeof data === "string" ? data : JSON.stringify(data) }],
+				...toMcpContent(data),
 			};
 		}
 
-		return {
-			content: [{
-				type: "text" as const,
-				text: typeof data === "string" ? data : JSON.stringify(data),
-			}],
-		};
+		return toMcpContent(data);
 	});
 
 	return server;
@@ -245,6 +250,9 @@ export function mcp(options: McpPluginOptions = {}) {
 		// Build a Map for O(1) tool lookup by name
 		const toolMap = new Map<string, DiscoveredTool>();
 		for (const tool of tools) {
+			if (toolMap.has(tool.name)) {
+				console.warn(`[mcp] Duplicate tool name "${tool.name}" — later route will override`);
+			}
 			toolMap.set(tool.name, tool);
 		}
 
