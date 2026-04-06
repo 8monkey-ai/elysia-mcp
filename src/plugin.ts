@@ -28,7 +28,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { deriveToolName } from "./naming.js";
 import { asSchemaLike, flattenSchemas, unflattenArgs } from "./schema.js";
 import type { FlattenResult } from "./schema.js";
-import { toMcpContent } from "./unwrap.js";
+import { parseResponseData, toMcpContent } from "./unwrap.js";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -168,21 +168,6 @@ function buildRequest(
     headers,
     body: bodyContent,
   });
-}
-
-async function parseResponseData(response: Response): Promise<unknown> {
-  const contentType = response.headers.get("content-type") ?? "";
-  const text = await response.text();
-
-  if (!contentType.includes("application/json") || text.length === 0) {
-    return text;
-  }
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
 }
 
 // ─── Create MCP Server with tool handlers (one per request) ─────────

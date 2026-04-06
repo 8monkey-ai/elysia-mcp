@@ -1,6 +1,36 @@
 import { describe, expect, it } from "bun:test";
 
-import { toMcpContent } from "./unwrap.js";
+import { parseResponseData, toMcpContent } from "./unwrap.js";
+
+describe("parseResponseData", () => {
+  it("parses JSON response", async () => {
+    const response = new Response(JSON.stringify({ id: 1 }), {
+      headers: { "content-type": "application/json" },
+    });
+    expect(await parseResponseData(response)).toEqual({ id: 1 });
+  });
+
+  it("returns text for non-JSON content-type", async () => {
+    const response = new Response("hello", {
+      headers: { "content-type": "text/plain" },
+    });
+    expect(await parseResponseData(response)).toBe("hello");
+  });
+
+  it("returns empty string for empty JSON body", async () => {
+    const response = new Response("", {
+      headers: { "content-type": "application/json" },
+    });
+    expect(await parseResponseData(response)).toBe("");
+  });
+
+  it("falls back to text on invalid JSON", async () => {
+    const response = new Response("not json", {
+      headers: { "content-type": "application/json" },
+    });
+    expect(await parseResponseData(response)).toBe("not json");
+  });
+});
 
 describe("toMcpContent", () => {
   it("formats objects as JSON text content", () => {

@@ -1,7 +1,7 @@
 /**
- * Response formatting utilities.
+ * Response unwrapping and formatting utilities.
  *
- * Converts handler responses into MCP text content payloads.
+ * Extracts data from HTTP responses and converts it into MCP text content.
  */
 
 import type { TextContent } from "@modelcontextprotocol/sdk/types.js";
@@ -10,6 +10,25 @@ type McpTextContent = { content: TextContent[] };
 
 function toTextContent(text: string): TextContent {
   return { type: "text", text };
+}
+
+/**
+ * Extract the response body from an HTTP Response.
+ * Parses JSON when the content-type indicates it; falls back to plain text.
+ */
+export async function parseResponseData(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type") ?? "";
+  const text = await response.text();
+
+  if (!contentType.includes("application/json") || text.length === 0) {
+    return text;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
 /**
