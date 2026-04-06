@@ -4,15 +4,40 @@ import { Elysia, t } from "elysia";
 
 import { mcp } from "./plugin.js";
 
+// ─── MCP response types for test assertions ────────────────────────
+
+interface McpToolsListResponse {
+	result: {
+		tools: Array<{
+			name: string;
+			description: string;
+			inputSchema: {
+				type: string;
+				properties: Record<string, { description?: string }>;
+				required: string[];
+			};
+		}>;
+	};
+}
+
+interface McpToolCallResponse {
+	result: {
+		content: Array<{ type: string; text: string }>;
+		isError?: boolean;
+	};
+}
+
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion -- test assertions use JSON.parse/response.json which return `any` */
+
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-/** Send a JSON-RPC request to the MCP endpoint */
-async function mcpRequest(
+/** Send a JSON-RPC request to the MCP endpoint and parse the JSON response */
+async function mcpRequest<T = unknown>(
 	app: Elysia,
 	body: unknown,
 	headers?: Record<string, string>,
 	path = "/mcp",
-): Promise<unknown> {
+): Promise<T> {
 	const response = await app.handle(
 		new Request(`http://localhost${path}`, {
 			method: "POST",
@@ -24,7 +49,7 @@ async function mcpRequest(
 			body: JSON.stringify(body),
 		}),
 	);
-	return response.json();
+	return response.json() as T;
 }
 
 /** MCP initialize request — must be sent before other requests */
@@ -190,11 +215,9 @@ describe("MCP Plugin Integration", () => {
 		// Initialize first
 		await mcpRequest(app, initRequest());
 
-		const result = (await mcpRequest(app, listToolsRequest())) as {
-			result: { tools: Array<{ name: string; description: string }> };
-		};
+		const result = await mcpRequest<McpToolsListResponse>(app, listToolsRequest());
 
-		const toolNames = result.result.tools.map((t) => t.name);
+		const toolNames = result.result.tools.map((tool) => tool.name);
 		expect(toolNames).toContain("list_users");
 		expect(toolNames).toContain("get_user");
 		expect(toolNames).toContain("create_user");
@@ -206,70 +229,60 @@ describe("MCP Plugin Integration", () => {
 
 	it("does not expose non-MCP routes as tools", async () => {
 		await mcpRequest(app, initRequest());
-		const result = (await mcpRequest(app, listToolsRequest())) as {
-			result: { tools: Array<{ name: string }> };
-		};
-		const toolNames = result.result.tools.map((t) => t.name);
+		const result = await mcpRequest<McpToolsListResponse>(app, listToolsRequest());
+		const toolNames = result.result.tools.map((tool) => tool.name);
 		expect(toolNames).not.toContain("list_health");
 	});
 
 	it("calls a GET tool and returns data", async () => {
 		lifecycleLog.length = 0;
 		await mcpRequest(app, initRequest());
-		const result = (await mcpRequest(
+		const result = await mcpRequest<McpToolCallResponse>(
 			app,
 			callToolRequest("list_users"),
-		)) as {
-			result: { content: Array<{ type: string; text: string }> };
-		};
+		);
 
 		expect(result.result.content[0]?.type).toBe("text");
-		const data = JSON.parse(result.result.content[0]!.text);
+		const data = JSON.parse(result.result.content[0]!.text) as Array<Record<string, unknown>>;
 		expect(data).toHaveLength(2);
 		expect(data[0].name).toBe("Alice");
 	});
 
 	it("calls a GET tool with path parameters", async () => {
 		await mcpRequest(app, initRequest());
-		const result = (await mcpRequest(
+		const result = await mcpRequest<McpToolCallResponse>(
 			app,
 			callToolRequest("get_user", { id: "42" }),
-		)) as {
-			result: { content: Array<{ type: string; text: string }> };
-		};
+		);
 
-		const data = JSON.parse(result.result.content[0]!.text);
+		const data = JSON.parse(result.result.content[0]!.text) as Record<string, unknown>;
 		expect(data.id).toBe("42");
 		expect(data.name).toBe("Alice");
 	});
 
 	it("calls a POST tool with body", async () => {
 		await mcpRequest(app, initRequest());
-		const result = (await mcpRequest(
+		const result = await mcpRequest<McpToolCallResponse>(
 			app,
 			callToolRequest("create_user", {
 				name: "Charlie",
 				email: "charlie@example.com",
 			}),
-		)) as {
-			result: { content: Array<{ type: string; text: string }> };
-		};
+		);
 
-		const data = JSON.parse(result.result.content[0]!.text);
+		const data = JSON.parse(result.result.content[0]!.text) as Record<string, unknown>;
 		expect(data.name).toBe("Charlie");
 		expect(data.email).toBe("charlie@example.com");
 	});
 
 	it("calls a PATCH tool with params and body", async () => {
 		await mcpRequest(app, initRequest());
-		const result = (await mcpRequest(
+		const result = await mcpRequest<McpToolCallResponse>(
 			app,
 			callToolRequest("update_user", { id: "42", name: "Updated" }),
-		)) as {
-			result: { content: Array<{ type: string; text: string }> };
-		};
+		);
 
-		const data = JSON.parse(result.result.content[0]!.text);
+		const data = JSON.parse(result.result.content[0]!.text) as Record<string, unknown>;
 		expect(data.id).toBe("42");
 		expect(data.name).toBe("Updated");
 	});
@@ -291,25 +304,21 @@ describe("MCP Plugin Integration", () => {
 
 	it("provides derived context to handlers via app.handle()", async () => {
 		await mcpRequest(app, initRequest());
-		const result = (await mcpRequest(
+		const result = await mcpRequest<McpToolCallResponse>(
 			app,
 			callToolRequest("list_whoami"),
-		)) as {
-			result: { content: Array<{ type: string; text: string }> };
-		};
+		);
 
-		const data = JSON.parse(result.result.content[0]!.text);
+		const data = JSON.parse(result.result.content[0]!.text) as Record<string, unknown>;
 		expect(data.requestId).toBe("req-123");
 	});
 
 	it("returns an error for unknown tools", async () => {
 		await mcpRequest(app, initRequest());
-		const result = (await mcpRequest(
+		const result = await mcpRequest<McpToolCallResponse>(
 			app,
 			callToolRequest("nonexistent_tool"),
-		)) as {
-			result: { isError: boolean; content: Array<{ text: string }> };
-		};
+		);
 
 		expect(result.result.isError).toBe(true);
 		expect(result.result.content[0]?.text).toContain("Unknown tool");
@@ -319,46 +328,31 @@ describe("MCP Plugin Integration", () => {
 		const response = await app.handle(
 			new Request("http://localhost/health"),
 		);
-		const data = await response.json();
+		const data = await response.json() as Record<string, unknown>;
 		expect(data).toEqual({ status: "ok" });
 	});
 
 	it("preserves tool descriptions from detail.summary", async () => {
 		await mcpRequest(app, initRequest());
-		const result = (await mcpRequest(app, listToolsRequest())) as {
-			result: { tools: Array<{ name: string; description: string }> };
-		};
+		const result = await mcpRequest<McpToolsListResponse>(app, listToolsRequest());
 
-		const listUsers = result.result.tools.find((t) => t.name === "list_users");
+		const listUsers = result.result.tools.find((tool) => tool.name === "list_users");
 		expect(listUsers?.description).toBe("List all users");
 	});
 
 	it("uses explicit mcp description when provided", async () => {
 		await mcpRequest(app, initRequest());
-		const result = (await mcpRequest(app, listToolsRequest())) as {
-			result: { tools: Array<{ name: string; description: string }> };
-		};
+		const result = await mcpRequest<McpToolsListResponse>(app, listToolsRequest());
 
-		const getUser = result.result.tools.find((t) => t.name === "get_user");
+		const getUser = result.result.tools.find((tool) => tool.name === "get_user");
 		expect(getUser?.description).toBe("Retrieve a single user");
 	});
 
 	it("includes input schema with property descriptions", async () => {
 		await mcpRequest(app, initRequest());
-		const result = (await mcpRequest(app, listToolsRequest())) as {
-			result: {
-				tools: Array<{
-					name: string;
-					inputSchema: {
-						type: string;
-						properties: Record<string, { description?: string }>;
-						required: string[];
-					};
-				}>;
-			};
-		};
+		const result = await mcpRequest<McpToolsListResponse>(app, listToolsRequest());
 
-		const getUser = result.result.tools.find((t) => t.name === "get_user");
+		const getUser = result.result.tools.find((tool) => tool.name === "get_user");
 		expect(getUser?.inputSchema.type).toBe("object");
 		expect(getUser?.inputSchema.properties["id"]?.description).toBe("The user ID");
 		expect(getUser?.inputSchema.required).toContain("id");
@@ -375,10 +369,8 @@ describe("MCP Plugin allRoutes option", () => {
 
 		await app.handle(new Request("http://localhost/health"));
 		await mcpRequest(app, initRequest());
-		const result = (await mcpRequest(app, listToolsRequest())) as {
-			result: { tools: Array<{ name: string }> };
-		};
-		const toolNames = result.result.tools.map((t) => t.name);
+		const result = await mcpRequest<McpToolsListResponse>(app, listToolsRequest());
+		const toolNames = result.result.tools.map((tool) => tool.name);
 		expect(toolNames).toContain("list_users");
 		expect(toolNames).toContain("list_items");
 		expect(toolNames).not.toContain("list_health");
@@ -392,10 +384,8 @@ describe("MCP Plugin allRoutes option", () => {
 
 		await app.handle(new Request("http://localhost/items"));
 		await mcpRequest(app, initRequest());
-		const result = (await mcpRequest(app, listToolsRequest())) as {
-			result: { tools: Array<{ name: string }> };
-		};
-		const toolNames = result.result.tools.map((t) => t.name);
+		const result = await mcpRequest<McpToolsListResponse>(app, listToolsRequest());
+		const toolNames = result.result.tools.map((tool) => tool.name);
 		expect(toolNames).toContain("list_users");
 		expect(toolNames).not.toContain("list_items");
 	});
@@ -479,11 +469,9 @@ describe("MCP Plugin Lifecycle Verification", () => {
 
 		await mcpRequest(app, initRequest());
 
-		const result = (await mcpRequest(app, callToolRequest("list_magic"))) as {
-			result: { content: Array<{ text: string }> };
-		};
+		const result = await mcpRequest<McpToolCallResponse>(app, callToolRequest("list_magic"));
 
-		const data = JSON.parse(result.result.content[0]!.text);
+		const data = JSON.parse(result.result.content[0]!.text) as Record<string, unknown>;
 		expect(data.value).toBe(42);
 	});
 
@@ -509,15 +497,13 @@ describe("MCP Plugin Lifecycle Verification", () => {
 		await mcpRequest(app, initRequest(), { authorization: "Bearer test-token" });
 
 		// Call tool with auth header
-		const result = (await mcpRequest(
+		const result = await mcpRequest<McpToolCallResponse>(
 			app,
 			callToolRequest("list_protected"),
 			{ authorization: "Bearer test-token" },
-		)) as {
-			result: { content: Array<{ text: string }> };
-		};
+		);
 
-		const data = JSON.parse(result.result.content[0]!.text);
+		const data = JSON.parse(result.result.content[0]!.text) as Record<string, unknown>;
 		expect(data.auth).toBe("Bearer test-token");
 	});
 });

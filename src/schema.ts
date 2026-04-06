@@ -43,14 +43,17 @@ export interface FlattenResult {
  * TypeBox schemas *are* JSON Schema objects at runtime, so `schema.properties`
  * is the standard way to access them.
  */
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && value !== undefined && typeof value === "object" && !Array.isArray(value);
+}
+
 function extractProperties(
 	schema: unknown,
-): Record<string, JsonSchemaProperty> | undefined {
-	if (schema == null || typeof schema !== "object") return undefined;
+): Record<string, unknown> | undefined {
+	if (!isRecord(schema)) return undefined;
 
-	const s = schema as Record<string, unknown>;
-	if (s["type"] === "object" && s["properties"] != null && typeof s["properties"] === "object") {
-		return s["properties"] as Record<string, JsonSchemaProperty>;
+	if (schema["type"] === "object" && isRecord(schema["properties"])) {
+		return schema["properties"];
 	}
 
 	return undefined;
@@ -58,10 +61,11 @@ function extractProperties(
 
 /** Returns required field names from a JSON Schema object */
 function extractRequired(schema: unknown): Set<string> {
-	if (schema == null || typeof schema !== "object") return new Set();
-	const s = schema as Record<string, unknown>;
-	if (Array.isArray(s["required"])) {
-		return new Set(s["required"] as string[]);
+	if (!isRecord(schema)) return new Set();
+	const req = schema["required"];
+	if (Array.isArray(req)) {
+		const strings = req.filter((s): s is string => typeof s === "string");
+		return new Set(strings);
 	}
 	return new Set();
 }
@@ -91,17 +95,19 @@ export function flattenSchemas(
 
 	for (const bucket of buckets) {
 		const raw = schemas[bucket];
-		if (raw == null) continue;
+		if (raw === null || raw === undefined) continue;
 
 		const props = extractProperties(raw);
-		if (props == null) continue;
+		if (props === null || props === undefined) continue;
 
 		const requiredSet = extractRequired(raw);
 
-		for (const [name, prop] of Object.entries(props)) {
+		for (const [name, rawProp] of Object.entries(props)) {
+			const prop = isRecord(rawProp) ? rawProp : {};
+
 			// Collision detection
 			const existing = seen.get(name);
-			if (existing != null) {
+			if (existing !== undefined) {
 				warnings.push(
 					`[mcp] Tool "${toolName}": property "${name}" exists in both ${existing} and ${bucket} — ${bucket} will take precedence`,
 				);
@@ -109,7 +115,8 @@ export function flattenSchemas(
 			seen.set(name, bucket);
 
 			// Missing description warning
-			if (!prop.description) {
+			const description = typeof prop["description"] === "string" ? prop["description"] : undefined;
+			if (description === undefined || description === "") {
 				warnings.push(
 					`[mcp] Tool "${toolName}": property "${name}" (${bucket}) is missing a description`,
 				);
@@ -155,7 +162,7 @@ export function unflattenArgs(
 
 	for (const origin of origins) {
 		if (origin.name in args) {
-			bucketMap[origin.bucket]![origin.name] = args[origin.name];
+			bucketMap[origin.bucket][origin.name] = args[origin.name];
 		}
 	}
 

@@ -56,7 +56,7 @@ export function deriveToolName(method: string, path: string): string {
 
 	// Collect non-parameter segments
 	const parts = segments.filter((s) => !isParam(s));
-	const endsWithParam = segments.length > 0 && isParam(segments[segments.length - 1]!);
+	const endsWithParam = segments.length > 0 && isParam(segments.at(-1)!);
 	const upperMethod = method.toUpperCase();
 
 	let prefix: string;
@@ -93,7 +93,7 @@ export function deriveToolName(method: string, path: string): string {
 	// methods) the last non-param segment
 	const named = parts.map((part, i) => {
 		const nextSegment = segments[partIndices[i]! + 1];
-		const followedByParam = nextSegment != null && isParam(nextSegment);
+		const followedByParam = nextSegment !== undefined && nextSegment !== null && isParam(nextSegment);
 
 		if (followedByParam || (singleResource && i === parts.length - 1)) {
 			return singularize(part);

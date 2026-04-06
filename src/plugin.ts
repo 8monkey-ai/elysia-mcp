@@ -67,6 +67,11 @@ interface McpRequestContext {
 
 const mcpContext = new AsyncLocalStorage<McpRequestContext>();
 
+/** Type guard: returns true when value is a non-null, non-array object */
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && value !== undefined && typeof value === "object" && !Array.isArray(value);
+}
+
 // ─── Route Discovery ─────────────────────────────────────────────────
 
 function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
@@ -74,30 +79,35 @@ function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
 	const routes = app.routes;
 
 	for (const route of routes) {
-		const detail = route.hooks?.detail as Record<string, unknown> | undefined;
+		// Elysia's route.hooks is typed as `any`; extract fields safely
+		const hooks: Record<string, unknown> = isRecord(route.hooks) ? route.hooks : {};
+		const detail = isRecord(hooks["detail"]) ? hooks["detail"] : undefined;
 		const mcpValue = detail?.["mcp"];
 
 		// Skip routes that are explicitly opted out
 		if (mcpValue === false) continue;
 
 		// In opt-in mode, skip routes without `detail.mcp`
-		if (!allRoutes && !mcpValue) continue;
+		if (!allRoutes && (mcpValue === undefined || mcpValue === null)) continue;
 
-		const mcpMeta = (mcpValue === true || mcpValue == null ? undefined : mcpValue) as McpToolMeta | undefined;
+		const mcpMeta = isRecord(mcpValue) ? mcpValue : undefined;
 		const method = route.method.toUpperCase();
 		const routePath = route.path;
 
-		const name = mcpMeta?.name ?? deriveToolName(method, routePath);
+		const mcpName = typeof mcpMeta?.["name"] === "string" ? mcpMeta["name"] : undefined;
+		const mcpDescription = typeof mcpMeta?.["description"] === "string" ? mcpMeta["description"] : undefined;
+		const name = mcpName ?? deriveToolName(method, routePath);
 
+		const summary = detail?.["summary"];
 		const description =
-			mcpMeta?.description ||
-			(detail?.["summary"] as string | undefined) ||
+			mcpDescription ??
+			(typeof summary === "string" ? summary : undefined) ??
 			`${method} ${routePath}`;
 
 		const flatten = flattenSchemas(name, {
-			params: route.hooks?.params,
-			query: route.hooks?.query,
-			body: route.hooks?.body,
+			params: hooks["params"],
+			query: hooks["query"],
+			body: hooks["body"],
 		});
 
 		for (const warning of flatten.warnings) {
@@ -132,7 +142,7 @@ function buildRequest(
 		.join("/");
 
 	// Build query string
-	const queryEntries = Object.entries(query).filter(([, v]) => v != null);
+	const queryEntries = Object.entries(query).filter(([, v]) => v !== null && v !== undefined);
 	const qs = queryEntries.length > 0
 		? `?${new URLSearchParams(queryEntries.map(([k, v]) => [k, String(v)])).toString()}`
 		: "";
@@ -199,7 +209,7 @@ function createMcpServer(
 			};
 		}
 
-		const args = (request.params.arguments ?? {}) as Record<string, unknown>;
+		const args = request.params.arguments ?? {};
 
 		const ctx = mcpContext.getStore();
 		if (!ctx) {
@@ -211,7 +221,7 @@ function createMcpServer(
 
 		// Build a synthetic request and run through the full Elysia lifecycle
 		const syntheticRequest = buildRequest(tool, args, ctx.request);
-		const response = await rootApp.handle(syntheticRequest) as Response;
+		const response = await rootApp.handle(syntheticRequest);
 
 		let data: unknown;
 		const contentType = response.headers.get("content-type") ?? "";
@@ -285,7 +295,7 @@ export function mcp(options: McpPluginOptions = {}) {
 		// is created per-request (stateless mode, no session tracking).
 		const server = createMcpServer(name, version, toolMap, app);
 
-		return app.post(path, async ({ request, body }: { request: Request; body: unknown }) => {
+		return app.post(path, ({ request, body }: { request: Request; body: unknown }) => {
 			return mcpContext.run({ request }, async () => {
 				const transport = new WebStandardStreamableHTTPServerTransport({
 					sessionIdGenerator: undefined,

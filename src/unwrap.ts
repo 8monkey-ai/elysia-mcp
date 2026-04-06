@@ -13,12 +13,11 @@ const STATUS_SYMBOL = Symbol.for("ElysiaCustomStatusResponse");
  * If the value is not a status wrapper, returns it unchanged.
  */
 export function unwrapStatus(value: unknown): unknown {
-	if (value == null || typeof value !== "object") return value;
+	if (value === null || value === undefined || typeof value !== "object") return value;
 
 	// Elysia's status() returns an object with [Symbol.for('ElysiaCustomStatusResponse')]
-	const record = value as Record<string | symbol, unknown>;
-	if (STATUS_SYMBOL in record) {
-		return record["response"];
+	if (STATUS_SYMBOL in value) {
+		return (value as Record<string | symbol, unknown>)["response"];
 	}
 
 	return value;

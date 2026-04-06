@@ -12,7 +12,7 @@ describe("unwrapStatus", () => {
 		expect(unwrapStatus("hello")).toBe("hello");
 		expect(unwrapStatus(42)).toBe(42);
 		expect(unwrapStatus(null)).toBe(null);
-		expect(unwrapStatus(undefined)).toBe(undefined);
+		expect(unwrapStatus()).toBe(undefined);
 	});
 
 	it("unwraps Elysia status() responses", () => {
