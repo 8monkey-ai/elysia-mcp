@@ -334,6 +334,14 @@ describe("MCP Plugin Integration", () => {
     expect(result.error.message).toContain("Tool nonexistent_tool not found");
   });
 
+  it("returns an error when required path params are missing", async () => {
+    await initializeMcp(app);
+    const result = await mcpRequest<McpErrorResponse>(app, callToolRequest("get_user"));
+
+    expect(result.error.code).toBe(-32602);
+    expect(result.error.message).toContain('Missing required path parameter "id"');
+  });
+
   it("does not interfere with regular REST endpoints", async () => {
     const response = await app.handle(new Request("http://localhost/health"));
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion

@@ -148,7 +148,12 @@ function buildRequest(
     .map((segment) => {
       if (!segment.startsWith(":")) return segment;
       const key = segment.slice(1);
-      if (!Object.prototype.hasOwnProperty.call(params, key)) return segment;
+      if (!Object.prototype.hasOwnProperty.call(params, key)) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          `Missing required path parameter "${key}" for tool ${tool.name}`,
+        );
+      }
       return encodeURIComponent(String(params[key]));
     })
     .join("/");
