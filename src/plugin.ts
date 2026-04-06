@@ -232,15 +232,16 @@ function createMcpServer(
     const syntheticRequest = buildRequest(tool, args, originalRequest);
     const response = await rootApp.handle(syntheticRequest);
     const data = await parseResponseData(response);
+    const result = toMcpContent(data);
 
     if (!response.ok) {
       return {
         isError: true,
-        ...toMcpContent(data),
+        content: result.content,
       };
     }
 
-    return toMcpContent(data);
+    return result;
   });
 
   return mcpServer;
@@ -276,7 +277,7 @@ export function mcp(options: McpPluginOptions = {}) {
       toolMap.set(tool.name, tool);
     }
     const toolListResponse = {
-      tools: [...toolMap.values()].map((tool) => ({
+      tools: Array.from(toolMap.values(), (tool) => ({
         name: tool.name,
         description: tool.description,
         inputSchema: tool.flatten.schema,
