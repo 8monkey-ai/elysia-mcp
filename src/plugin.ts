@@ -11,8 +11,6 @@
  * hooks, and all plugins).
  */
 
-/* eslint-disable @typescript-eslint/no-unsafe-type-assertion -- Elysia's route.hooks is typed as `any`; we assert known shapes */
-
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import type { Elysia } from "elysia";
@@ -77,7 +75,9 @@ function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
 
 	for (const route of routes) {
 		// Elysia's route.hooks is typed as `any` — cast to Record
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 		const hooks = route.hooks as Record<string, unknown>;
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 		const detail = hooks["detail"] as Record<string, unknown> | undefined;
 		const mcpValue = detail?.["mcp"];
 
@@ -88,6 +88,7 @@ function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
 		if (!allRoutes && (mcpValue === undefined || mcpValue === null)) continue;
 
 		const mcpMeta = typeof mcpValue === "object" && mcpValue !== null
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 			? mcpValue as Record<string, unknown>
 			: undefined;
 		const method = route.method.toUpperCase();

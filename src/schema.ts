@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-type-assertion -- schema inputs are known JSON Schema objects */
-
 /**
  * Schema flattening for MCP tool input schemas.
  *
@@ -50,8 +48,10 @@ function extractProperties(
 ): Record<string, unknown> | undefined {
 	if (schema === null || schema === undefined || typeof schema !== "object") return undefined;
 
+	// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 	const s = schema as Record<string, unknown>;
 	if (s["type"] === "object" && typeof s["properties"] === "object" && s["properties"] !== null) {
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 		return s["properties"] as Record<string, unknown>;
 	}
 
@@ -61,6 +61,7 @@ function extractProperties(
 /** Returns required field names from a JSON Schema object */
 function extractRequired(schema: unknown): Set<string> {
 	if (schema === null || schema === undefined || typeof schema !== "object") return new Set();
+	// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 	const req = (schema as Record<string, unknown>)["required"];
 	if (Array.isArray(req)) {
 		const strings = req.filter((s): s is string => typeof s === "string");
@@ -102,6 +103,7 @@ export function flattenSchemas(
 		const requiredSet = extractRequired(raw);
 
 		for (const [name, rawProp] of Object.entries(props)) {
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 			const prop = (typeof rawProp === "object" && rawProp !== null ? rawProp : {}) as Record<string, unknown>;
 
 			// Collision detection

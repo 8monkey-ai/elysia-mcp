@@ -16,8 +16,6 @@ interface McpToolCallResponse {
 	result: CallToolResult;
 }
 
-/* eslint-disable @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/no-unsafe-argument -- test assertions use JSON.parse/response.json which return `any` */
-
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 /** Send a JSON-RPC request to the MCP endpoint and parse the JSON response */
@@ -38,6 +36,7 @@ async function mcpRequest<T = unknown>(
 			body: JSON.stringify(body),
 		}),
 	);
+	// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 	return response.json() as T;
 }
 
@@ -163,6 +162,7 @@ function createTestApp() {
 			"/whoami",
 			(ctx) => {
 				lifecycleLog.push("handler");
+				// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 				return { requestId: (ctx as unknown as Record<string, unknown>).requestId };
 			},
 			{
@@ -232,6 +232,7 @@ describe("MCP Plugin Integration", () => {
 		);
 
 		expect(result.result.content[0]?.type).toBe("text");
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/no-unsafe-argument
 		const data = JSON.parse(result.result.content[0]!.text) as Array<Record<string, unknown>>;
 		expect(data).toHaveLength(2);
 		expect(data[0].name).toBe("Alice");
@@ -244,6 +245,7 @@ describe("MCP Plugin Integration", () => {
 			callToolRequest("get_user", { id: "42" }),
 		);
 
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/no-unsafe-argument
 		const data = JSON.parse(result.result.content[0]!.text) as Record<string, unknown>;
 		expect(data.id).toBe("42");
 		expect(data.name).toBe("Alice");
@@ -259,6 +261,7 @@ describe("MCP Plugin Integration", () => {
 			}),
 		);
 
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/no-unsafe-argument
 		const data = JSON.parse(result.result.content[0]!.text) as Record<string, unknown>;
 		expect(data.name).toBe("Charlie");
 		expect(data.email).toBe("charlie@example.com");
@@ -271,6 +274,7 @@ describe("MCP Plugin Integration", () => {
 			callToolRequest("update_user", { id: "42", name: "Updated" }),
 		);
 
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/no-unsafe-argument
 		const data = JSON.parse(result.result.content[0]!.text) as Record<string, unknown>;
 		expect(data.id).toBe("42");
 		expect(data.name).toBe("Updated");
@@ -298,6 +302,7 @@ describe("MCP Plugin Integration", () => {
 			callToolRequest("list_whoami"),
 		);
 
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/no-unsafe-argument
 		const data = JSON.parse(result.result.content[0]!.text) as Record<string, unknown>;
 		expect(data.requestId).toBe("req-123");
 	});
@@ -317,6 +322,7 @@ describe("MCP Plugin Integration", () => {
 		const response = await app.handle(
 			new Request("http://localhost/health"),
 		);
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 		const data = await response.json() as Record<string, unknown>;
 		expect(data).toEqual({ status: "ok" });
 	});
@@ -447,7 +453,8 @@ describe("MCP Plugin Lifecycle Verification", () => {
 			.derive(() => ({ magic: 42 }))
 			.get(
 				"/magic",
-				(ctx) => ({ value: (ctx as unknown as Record<string, unknown>).magic }),
+				// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+			(ctx) => ({ value: (ctx as unknown as Record<string, unknown>).magic }),
 				{
 					detail: { mcp: true },
 				},
@@ -460,6 +467,7 @@ describe("MCP Plugin Lifecycle Verification", () => {
 
 		const result = await mcpRequest<McpToolCallResponse>(app, callToolRequest("list_magic"));
 
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/no-unsafe-argument
 		const data = JSON.parse(result.result.content[0]!.text) as Record<string, unknown>;
 		expect(data.value).toBe(42);
 	});
@@ -492,6 +500,7 @@ describe("MCP Plugin Lifecycle Verification", () => {
 			{ authorization: "Bearer test-token" },
 		);
 
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/no-unsafe-argument
 		const data = JSON.parse(result.result.content[0]!.text) as Record<string, unknown>;
 		expect(data.auth).toBe("Bearer test-token");
 	});
