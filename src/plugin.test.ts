@@ -303,6 +303,56 @@ describe("MCP Plugin Integration", () => {
     expect(data["name"]).toBe("Updated");
   });
 
+  it("sends an empty JSON object for empty object body schemas", async () => {
+    const app = new Elysia()
+      .post(
+        "/empty-body",
+        ({ body }) => ({
+          receivedBody: body,
+          isObject: typeof body === "object" && body !== null,
+        }),
+        {
+          body: t.Object({}),
+          detail: { mcp: { name: "create_empty_body" } },
+        },
+      )
+      .use(mcp({ name: "test" }));
+
+    await app.handle(new Request("http://localhost/health"));
+    await initializeMcp(app);
+    const result = await callTool(app, "create_empty_body");
+
+    const data = parseContent(result);
+    expect(data["receivedBody"]).toEqual({});
+    expect(data["isObject"]).toBe(true);
+  });
+
+  it("sends an empty JSON object when all body fields are optional", async () => {
+    const app = new Elysia()
+      .patch(
+        "/optional-body",
+        ({ body }) => ({
+          receivedBody: body,
+          isObject: typeof body === "object" && body !== null,
+        }),
+        {
+          body: t.Object({
+            note: t.Optional(t.String({ description: "Optional note" })),
+          }),
+          detail: { mcp: { name: "update_optional_body" } },
+        },
+      )
+      .use(mcp({ name: "test" }));
+
+    await app.handle(new Request("http://localhost/health"));
+    await initializeMcp(app);
+    const result = await callTool(app, "update_optional_body");
+
+    const data = parseContent(result);
+    expect(data["receivedBody"]).toEqual({});
+    expect(data["isObject"]).toBe(true);
+  });
+
   it("executes the full Elysia lifecycle (derive, beforeHandle, afterHandle)", async () => {
     lifecycleLog.length = 0;
     await initializeMcp(app);
@@ -470,7 +520,9 @@ describe("MCP Plugin outputSchema", () => {
     expect(outputSchema).toBeDefined();
     expect(outputSchema?.["type"]).toBe("object");
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const props = outputSchema?.["properties"] as Record<string, Record<string, unknown>> | undefined;
+    const props = outputSchema?.["properties"] as
+      | Record<string, Record<string, unknown>>
+      | undefined;
     expect(props?.["id"]?.["description"]).toBe("User ID");
     expect(props?.["name"]?.["description"]).toBe("User name");
   });
@@ -572,7 +624,9 @@ describe("MCP Plugin outputSchema", () => {
     expect(outputSchema).toBeDefined();
     expect(outputSchema?.["type"]).toBe("object");
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const props = outputSchema?.["properties"] as Record<string, Record<string, unknown>> | undefined;
+    const props = outputSchema?.["properties"] as
+      | Record<string, Record<string, unknown>>
+      | undefined;
     expect(props?.["ok"]).toBeDefined();
     expect(props?.["error"]).toBeUndefined();
   });

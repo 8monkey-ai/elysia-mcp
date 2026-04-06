@@ -20,6 +20,7 @@ describe("flattenSchemas", () => {
     expect(result.schema.required).toContain("id"); // params always required
     expect(result.schema.required).toContain("name"); // body required field
     expect(result.schema.required).not.toContain("fields"); // optional query param
+    expect(result.hasBodyObjectSchema).toBe(true);
   });
 
   it("preserves property descriptions", () => {
@@ -54,6 +55,7 @@ describe("flattenSchemas", () => {
 
     expect(result.schema.properties).toEqual({});
     expect(result.schema.required).toEqual([]);
+    expect(result.hasBodyObjectSchema).toBe(false);
   });
 
   it("handles null/undefined schemas", () => {
@@ -64,18 +66,28 @@ describe("flattenSchemas", () => {
     });
 
     expect(result.schema.properties).toEqual({});
+    expect(result.hasBodyObjectSchema).toBe(false);
+  });
+
+  it("tracks empty object body schemas even without flattened fields", () => {
+    const result = flattenSchemas("test_tool", {
+      body: Type.Object({}),
+    });
+
+    expect(result.schema.properties).toEqual({});
+    expect(result.hasBodyObjectSchema).toBe(true);
   });
 });
 
 describe("unflattenArgs", () => {
   it("splits flat args back into params, query, and body", () => {
-    const { origins } = flattenSchemas("test_tool", {
+    const flatten = flattenSchemas("test_tool", {
       params: Type.Object({ id: Type.String({ description: "ID" }) }),
       query: Type.Object({ fields: Type.Optional(Type.String({ description: "Fields" })) }),
       body: Type.Object({ name: Type.String({ description: "Name" }) }),
     });
 
-    const result = unflattenArgs({ id: "123", fields: "name,email", name: "Alice" }, origins);
+    const result = unflattenArgs({ id: "123", fields: "name,email", name: "Alice" }, flatten);
 
     expect(result.params).toEqual({ id: "123" });
     expect(result.query).toEqual({ fields: "name,email" });
@@ -83,15 +95,28 @@ describe("unflattenArgs", () => {
   });
 
   it("handles missing optional args", () => {
-    const { origins } = flattenSchemas("test_tool", {
+    const flatten = flattenSchemas("test_tool", {
       params: Type.Object({ id: Type.String({ description: "ID" }) }),
       query: Type.Object({ fields: Type.Optional(Type.String({ description: "Fields" })) }),
     });
 
-    const result = unflattenArgs({ id: "123" }, origins);
+    const result = unflattenArgs({ id: "123" }, flatten);
 
     expect(result.params).toEqual({ id: "123" });
     expect(result.query).toEqual({});
+    expect(result.body).toBeUndefined();
+  });
+
+  it("returns an empty body object when an object body schema exists", () => {
+    const flatten = flattenSchemas("test_tool", {
+      body: Type.Object({
+        note: Type.Optional(Type.String({ description: "Note" })),
+      }),
+    });
+
+    const result = unflattenArgs({}, flatten);
+
+    expect(result.body).toEqual({});
   });
 });
 

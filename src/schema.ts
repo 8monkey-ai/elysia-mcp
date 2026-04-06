@@ -44,6 +44,7 @@ export interface FlattenResult {
   schema: FlatJsonSchema;
   origins: PropertyOrigin[];
   warnings: string[];
+  hasBodyObjectSchema: boolean;
 }
 
 function asObjectRecord(value: unknown): JsonObject | undefined {
@@ -108,6 +109,7 @@ export function flattenSchemas(
   const origins: PropertyOrigin[] = [];
   const warnings: string[] = [];
   const seen = new Map<string, RequestPart>();
+  const hasBodyObjectSchema = schemas.body?.["type"] === "object";
 
   const requestParts: RequestPart[] = ["params", "query", "body"];
 
@@ -161,6 +163,7 @@ export function flattenSchemas(
     schema: { type: "object", properties, required: Array.from(required) },
     origins,
     warnings,
+    hasBodyObjectSchema,
   };
 }
 
@@ -227,11 +230,11 @@ function stripInternalKeys(schema: Record<string, unknown>): FlatJsonSchema {
 
 export function unflattenArgs(
   args: JsonObject,
-  origins: PropertyOrigin[],
+  flatten: FlattenResult,
 ): {
   params: JsonObject;
   query: JsonObject;
-  body: JsonObject;
+  body: JsonObject | undefined;
 } {
   const requestParts: Record<RequestPart, JsonObject> = {
     params: {},
@@ -239,11 +242,15 @@ export function unflattenArgs(
     body: {},
   };
 
-  for (const origin of origins) {
+  for (const origin of flatten.origins) {
     if (Object.hasOwn(args, origin.name)) {
       requestParts[origin.part][origin.name] = args[origin.name];
     }
   }
 
-  return requestParts;
+  return {
+    params: requestParts.params,
+    query: requestParts.query,
+    body: flatten.hasBodyObjectSchema ? requestParts.body : undefined,
+  };
 }

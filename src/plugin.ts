@@ -63,7 +63,6 @@ interface DiscoveredTool {
   description: string;
   method: string;
   pathSegments: string[];
-  hasBody: boolean;
   flatten: FlattenResult;
   outputSchema?: FlatJsonSchema;
 }
@@ -102,11 +101,7 @@ function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
     const routePath = route.path;
     const name = mcpMeta?.name ?? deriveToolName(method, routePath);
     const pathSegments = routePath.split("/");
-    const hasBody = method !== "GET" && method !== "HEAD";
-    const description =
-      mcpMeta?.description ??
-      detail?.summary ??
-      `${method} ${routePath}`;
+    const description = mcpMeta?.description ?? detail?.summary ?? `${method} ${routePath}`;
 
     const flatten = flattenSchemas(name, {
       params: asSchemaLike(hooks.params),
@@ -127,7 +122,7 @@ function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
       );
     }
 
-    tools.push({ name, description, method, pathSegments, hasBody, flatten, outputSchema });
+    tools.push({ name, description, method, pathSegments, flatten, outputSchema });
   }
 
   return tools;
@@ -140,7 +135,7 @@ function buildRequest(
   args: Record<string, unknown>,
   originalRequest: Request,
 ): Request {
-  const { params, query, body } = unflattenArgs(args, tool.flatten.origins);
+  const { params, query, body } = unflattenArgs(args, tool.flatten);
 
   // Substitute path parameters (segment-safe to avoid prefix collisions
   // e.g. `:id` matching `:id2`)
@@ -171,21 +166,18 @@ function buildRequest(
   // Copy headers from the original MCP request (auth, cookies, etc.)
   const headers = new Headers(originalRequest.headers);
 
-  const method = tool.method;
-  const hasJsonBody = tool.hasBody && Object.keys(body).length > 0;
-
   // Sanitize content headers — the original values correspond to the
   // JSON-RPC payload, not the synthetic request's body.
   headers.delete("content-length");
-  if (hasJsonBody) {
-    headers.set("content-type", "application/json");
-  } else {
+  if (body === undefined) {
     headers.delete("content-type");
+  } else {
+    headers.set("content-type", "application/json");
   }
-  const bodyContent = hasJsonBody ? JSON.stringify(body) : undefined;
+  const bodyContent = body === undefined ? undefined : JSON.stringify(body);
 
   return new Request(url, {
-    method,
+    method: tool.method,
     headers,
     body: bodyContent,
   });
