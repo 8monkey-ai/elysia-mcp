@@ -10,7 +10,7 @@ The [Model Context Protocol](https://modelcontextprotocol.io/) lets AI agents di
 
 ## Key highlights
 
-- **Zero duplication** — tool names, descriptions, and input schemas are derived from your existing route definitions
+- **Zero duplication** — tool names, descriptions, and input schemas are derived from your existing route definitions. The same `detail.summary` and TypeBox `description` fields that power your OpenAPI/Swagger docs also drive MCP tool discovery — write once, serve both humans and AI agents
 - **Full lifecycle** — MCP tool calls go through `app.handle()`, so derive, resolve, beforeHandle, afterHandle, error hooks, and all plugins run exactly as they do for normal HTTP requests
 - **Header forwarding** — auth tokens, cookies, and other headers from the MCP request are forwarded to tool invocations, so your existing auth middleware works without changes
 - **Schema flattening** — params, query, and body schemas are merged into a single flat MCP input schema with property origins tracked for correct unflattening
@@ -53,19 +53,25 @@ const app = new Elysia()
 
 This exposes a `POST /mcp` endpoint. An MCP client calling `tools/list` will see `list_users`, `get_user`, and `create_user`.
 
-## Adding descriptions
+## Descriptions matter — for agents and docs
 
-Use `detail.summary` to give tools human-readable descriptions:
+Good descriptions are critical for AI agents to understand when and how to call your tools. The plugin uses Elysia's standard `detail.summary` as the MCP tool description, and TypeBox `description` on each property as the parameter description. These are the **same fields** that Elysia uses for OpenAPI/Swagger documentation — so there's zero duplication. Write them once and they serve both your API docs and your MCP tools.
+
+The plugin warns at startup if any property is missing a `description`, since agents rely on these to choose the right tool and pass the correct arguments.
+
+### Route-level: `detail.summary`
+
+Use `detail.summary` to describe what the tool does. This becomes the MCP tool description **and** the OpenAPI operation summary:
 
 ```typescript
 .get("/users", () => db.users.findAll(), {
-  detail: { summary: "List all users" },
+  detail: { summary: "List all users in the system" },
 })
 ```
 
-## Adding input schemas
+### Property-level: TypeBox `description`
 
-TypeBox schemas on params, query, and body are automatically flattened into the tool's input schema:
+Add `description` to each TypeBox property. These become the MCP parameter descriptions **and** the OpenAPI property descriptions — the same metadata, no duplication:
 
 ```typescript
 import { t } from "elysia";
