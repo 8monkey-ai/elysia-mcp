@@ -110,11 +110,17 @@ function buildRequest(
 ): Request {
 	const { params, query, body } = unflattenArgs(args, tool.flatten.origins);
 
-	// Substitute path parameters
-	let resolvedPath = tool.path;
-	for (const [key, value] of Object.entries(params)) {
-		resolvedPath = resolvedPath.replace(`:${key}`, encodeURIComponent(String(value)));
-	}
+	// Substitute path parameters (segment-safe to avoid prefix collisions
+	// e.g. `:id` matching `:id2`)
+	const resolvedPath = tool.path
+		.split("/")
+		.map((segment) => {
+			if (!segment.startsWith(":")) return segment;
+			const key = segment.slice(1);
+			if (!Object.prototype.hasOwnProperty.call(params, key)) return segment;
+			return encodeURIComponent(String(params[key]));
+		})
+		.join("/");
 
 	// Build query string
 	const queryEntries = Object.entries(query).filter(([, v]) => v != null);
@@ -129,7 +135,7 @@ function buildRequest(
 	const headers = new Headers(originalRequest.headers);
 
 	const method = tool.method;
-	const hasBody = method !== "GET" && method !== "HEAD" && method !== "DELETE";
+	const hasBody = method !== "GET" && method !== "HEAD";
 
 	// Sanitize content headers — the original values correspond to the
 	// JSON-RPC payload, not the synthetic request's body.
@@ -200,10 +206,15 @@ function createMcpServer(
 
 		let data: unknown;
 		const contentType = response.headers.get("content-type") ?? "";
-		if (contentType.includes("application/json")) {
-			data = await response.json();
+		const text = await response.text();
+		if (contentType.includes("application/json") && text.length > 0) {
+			try {
+				data = JSON.parse(text);
+			} catch {
+				data = text;
+			}
 		} else {
-			data = await response.text();
+			data = text;
 		}
 
 		if (!response.ok) {
