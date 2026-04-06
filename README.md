@@ -127,24 +127,24 @@ Auto-generated names follow a `{verb}_{resource}` convention. Override with `mcp
 
 ### Naming conventions
 
-| Method + Path | Generated Name |
-|---|---|
-| `GET /users` | `list_users` |
-| `GET /users/:id` | `get_user` |
-| `POST /users` | `create_user` |
-| `PATCH /users/:id` | `update_user` |
-| `DELETE /users/:id` | `delete_user` |
+| Method + Path           | Generated Name    |
+| ----------------------- | ----------------- |
+| `GET /users`            | `list_users`      |
+| `GET /users/:id`        | `get_user`        |
+| `POST /users`           | `create_user`     |
+| `PATCH /users/:id`      | `update_user`     |
+| `DELETE /users/:id`     | `delete_user`     |
 | `GET /users/:uid/posts` | `list_user_posts` |
 
 ## Configuration
 
 ```typescript
 mcp({
-  name: "my-api",       // MCP server name (default: "elysia-mcp")
-  version: "1.0.0",     // MCP server version (default: "1.0.0")
-  path: "/mcp",         // Endpoint path (default: "/mcp")
-  allRoutes: true,      // Expose all routes by default (default: true)
-})
+  name: "my-api", // MCP server name (default: "elysia-mcp")
+  version: "1.0.0", // MCP server version (default: "1.0.0")
+  path: "/mcp", // Endpoint path (default: "/mcp")
+  allRoutes: true, // Expose all routes by default (default: true)
+});
 ```
 
 ## How tool calls work

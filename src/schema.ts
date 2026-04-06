@@ -7,57 +7,60 @@
 
 /** A simple JSON Schema property descriptor */
 export interface JsonSchemaProperty {
-	type?: string;
-	description?: string;
-	default?: unknown;
-	enum?: unknown[];
-	[key: string]: unknown;
+  type?: string;
+  description?: string;
+  default?: unknown;
+  enum?: unknown[];
+  [key: string]: unknown;
 }
 
 /** A flat JSON Schema object (type: "object") */
 export interface FlatJsonSchema {
-	type: "object";
-	properties: Record<string, JsonSchemaProperty>;
-	required: string[];
+  type: "object";
+  properties: Record<string, JsonSchemaProperty>;
+  required: string[];
 }
 
 /** The request part a property came from */
 export type RequestPart = "params" | "query" | "body";
 
 export interface PropertyOrigin {
-	name: string;
-	part: RequestPart;
+  name: string;
+  part: RequestPart;
 }
 
 type JsonObject = Record<string, unknown>;
-export type SchemaLike = (JsonObject & {
-	type?: unknown;
-	properties?: unknown;
-	required?: unknown;
-}) | null | undefined;
+export type SchemaLike =
+  | (JsonObject & {
+      type?: unknown;
+      properties?: unknown;
+      required?: unknown;
+    })
+  | null
+  | undefined;
 
 /** Result of schema flattening */
 export interface FlattenResult {
-	schema: FlatJsonSchema;
-	origins: PropertyOrigin[];
-	warnings: string[];
+  schema: FlatJsonSchema;
+  origins: PropertyOrigin[];
+  warnings: string[];
 }
 
 function asObjectRecord(value: unknown): JsonObject | undefined {
-	if (value === null || value === undefined || typeof value !== "object") return undefined;
+  if (value === null || value === undefined || typeof value !== "object") return undefined;
 
-	// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-	return value as JsonObject;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return value as JsonObject;
 }
 
 export function asSchemaLike(value: unknown): SchemaLike {
-	return asObjectRecord(value);
+  return asObjectRecord(value);
 }
 
 function asObjectSchema(schema: SchemaLike): JsonObject | undefined {
-	const record = asObjectRecord(schema);
-	if (record === undefined) return undefined;
-	return record;
+  const record = asObjectRecord(schema);
+  if (record === undefined) return undefined;
+  return record;
 }
 
 /**
@@ -67,22 +70,22 @@ function asObjectSchema(schema: SchemaLike): JsonObject | undefined {
  * is the standard way to access them.
  */
 function extractProperties(schema: SchemaLike): JsonObject | undefined {
-	const objectSchema = asObjectSchema(schema);
-	if (objectSchema?.["type"] === "object") {
-		return asObjectRecord(objectSchema["properties"]);
-	}
+  const objectSchema = asObjectSchema(schema);
+  if (objectSchema?.["type"] === "object") {
+    return asObjectRecord(objectSchema["properties"]);
+  }
 
-	return undefined;
+  return undefined;
 }
 
 /** Returns required field names from a JSON Schema object */
 function extractRequired(schema: SchemaLike): Set<string> {
-	const req = asObjectSchema(schema)?.["required"];
-	if (Array.isArray(req)) {
-		const strings = req.filter((s): s is string => typeof s === "string");
-		return new Set(strings);
-	}
-	return new Set();
+  const req = asObjectSchema(schema)?.["required"];
+  if (Array.isArray(req)) {
+    const strings = req.filter((s): s is string => typeof s === "string");
+    return new Set(strings);
+  }
+  return new Set();
 }
 
 /**
@@ -93,70 +96,70 @@ function extractRequired(schema: SchemaLike): Set<string> {
  * - Warns on properties missing descriptions
  */
 export function flattenSchemas(
-	toolName: string,
-	schemas: {
-		params?: SchemaLike;
-		query?: SchemaLike;
-		body?: SchemaLike;
-	},
+  toolName: string,
+  schemas: {
+    params?: SchemaLike;
+    query?: SchemaLike;
+    body?: SchemaLike;
+  },
 ): FlattenResult {
-	const properties: Record<string, JsonSchemaProperty> = {};
-	const required: string[] = [];
-	const origins: PropertyOrigin[] = [];
-	const warnings: string[] = [];
+  const properties: Record<string, JsonSchemaProperty> = {};
+  const required: string[] = [];
+  const origins: PropertyOrigin[] = [];
+  const warnings: string[] = [];
 
-	const requestParts: RequestPart[] = ["params", "query", "body"];
+  const requestParts: RequestPart[] = ["params", "query", "body"];
 
-	for (const requestPart of requestParts) {
-		const raw = schemas[requestPart];
-		if (raw === null || raw === undefined) continue;
+  for (const requestPart of requestParts) {
+    const raw = schemas[requestPart];
+    if (raw === null || raw === undefined) continue;
 
-		const props = extractProperties(raw);
-		if (props === null || props === undefined) continue;
+    const props = extractProperties(raw);
+    if (props === null || props === undefined) continue;
 
-		const requiredSet = extractRequired(raw);
+    const requiredSet = extractRequired(raw);
 
-		for (const [name, rawProp] of Object.entries(props)) {
-			const prop = asObjectRecord(rawProp) ?? {};
+    for (const [name, rawProp] of Object.entries(props)) {
+      const prop = asObjectRecord(rawProp) ?? {};
 
-			// Collision detection
-			const existing = origins.find((origin) => origin.name === name)?.part;
-			if (existing !== undefined) {
-				warnings.push(
-					`[mcp] Tool "${toolName}": property "${name}" exists in both ${existing} and ${requestPart} — ${requestPart} will take precedence`,
-				);
-			}
+      // Collision detection
+      const existing = origins.find((origin) => origin.name === name)?.part;
+      if (existing !== undefined) {
+        warnings.push(
+          `[mcp] Tool "${toolName}": property "${name}" exists in both ${existing} and ${requestPart} — ${requestPart} will take precedence`,
+        );
+      }
 
-			// Missing description warning
-			const description = typeof prop["description"] === "string" ? prop["description"] : undefined;
-			if (description === undefined || description === "") {
-				warnings.push(
-					`[mcp] Tool "${toolName}": property "${name}" (${requestPart}) is missing a description`,
-				);
-			}
+      // Missing description warning
+      const description = typeof prop["description"] === "string" ? prop["description"] : undefined;
+      if (description === undefined || description === "") {
+        warnings.push(
+          `[mcp] Tool "${toolName}": property "${name}" (${requestPart}) is missing a description`,
+        );
+      }
 
-			// Copy property, stripping TypeBox-internal symbols
-			const clean: JsonSchemaProperty = {};
-			for (const [k, v] of Object.entries(prop)) {
-				if (typeof k !== "string" || k.startsWith("[")) continue;
-				clean[k] = v;
-			}
-			properties[name] = clean;
+      // Copy property, stripping TypeBox-internal symbols
+      const clean: JsonSchemaProperty = {};
+      for (const [k, v] of Object.entries(prop)) {
+        if (typeof k !== "string" || k.startsWith("[")) continue;
+        clean[k] = v;
+      }
+      properties[name] = clean;
 
-			// All params are required; query/body follow the schema's required array
-			if (requestPart === "params" || requiredSet.has(name)) {
-				required.push(name);
-			}
+      // All params are required; query/body follow the schema's required array
+      if (requestPart === "params" || requiredSet.has(name)) {
+        required.push(name);
+      }
 
-			origins.push({ name, part: requestPart });
-		}
-	}
+      origins.push({ name, part: requestPart });
+    }
+  }
 
-	return {
-		schema: { type: "object", properties, required },
-		origins,
-		warnings,
-	};
+  return {
+    schema: { type: "object", properties, required },
+    origins,
+    warnings,
+  };
 }
 
 /**
@@ -164,24 +167,24 @@ export function flattenSchemas(
  * the property origins from flattenSchemas.
  */
 export function unflattenArgs(
-	args: JsonObject,
-	origins: PropertyOrigin[],
+  args: JsonObject,
+  origins: PropertyOrigin[],
 ): {
-	params: JsonObject;
-	query: JsonObject;
-	body: JsonObject;
+  params: JsonObject;
+  query: JsonObject;
+  body: JsonObject;
 } {
-	const requestParts: Record<RequestPart, JsonObject> = {
-		params: {},
-		query: {},
-		body: {},
-	};
+  const requestParts: Record<RequestPart, JsonObject> = {
+    params: {},
+    query: {},
+    body: {},
+  };
 
-	for (const origin of origins) {
-		if (origin.name in args) {
-			requestParts[origin.part][origin.name] = args[origin.name];
-		}
-	}
+  for (const origin of origins) {
+    if (origin.name in args) {
+      requestParts[origin.part][origin.name] = args[origin.name];
+    }
+  }
 
-	return requestParts;
+  return requestParts;
 }
