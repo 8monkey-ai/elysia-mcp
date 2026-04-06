@@ -21,14 +21,20 @@ export interface FlatJsonSchema {
 	required: string[];
 }
 
-/** The source bucket a property came from */
-type Bucket = "params" | "query" | "body";
+/** The request part a property came from */
+export type RequestPart = "params" | "query" | "body";
 
-/** Information about a flattened property (for unflattening later) */
 export interface PropertyOrigin {
 	name: string;
-	bucket: Bucket;
+	part: RequestPart;
 }
+
+type JsonObject = Record<string, unknown>;
+export type SchemaLike = (JsonObject & {
+	type?: unknown;
+	properties?: unknown;
+	required?: unknown;
+}) | null | undefined;
 
 /** Result of schema flattening */
 export interface FlattenResult {
@@ -37,32 +43,41 @@ export interface FlattenResult {
 	warnings: string[];
 }
 
+function asObjectRecord(value: unknown): JsonObject | undefined {
+	if (value === null || value === undefined || typeof value !== "object") return undefined;
+
+	// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+	return value as JsonObject;
+}
+
+export function asSchemaLike(value: unknown): SchemaLike {
+	return asObjectRecord(value);
+}
+
+function asObjectSchema(schema: SchemaLike): JsonObject | undefined {
+	const record = asObjectRecord(schema);
+	if (record === undefined) return undefined;
+	return record;
+}
+
 /**
  * Extract JSON Schema properties from a TypeBox schema or plain JSON Schema object.
  *
  * TypeBox schemas *are* JSON Schema objects at runtime, so `schema.properties`
  * is the standard way to access them.
  */
-function extractProperties(
-	schema: unknown,
-): Record<string, unknown> | undefined {
-	if (schema === null || schema === undefined || typeof schema !== "object") return undefined;
-
-	// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-	const s = schema as Record<string, unknown>;
-	if (s["type"] === "object" && typeof s["properties"] === "object" && s["properties"] !== null) {
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-		return s["properties"] as Record<string, unknown>;
+function extractProperties(schema: SchemaLike): JsonObject | undefined {
+	const objectSchema = asObjectSchema(schema);
+	if (objectSchema?.["type"] === "object") {
+		return asObjectRecord(objectSchema["properties"]);
 	}
 
 	return undefined;
 }
 
 /** Returns required field names from a JSON Schema object */
-function extractRequired(schema: unknown): Set<string> {
-	if (schema === null || schema === undefined || typeof schema !== "object") return new Set();
-	// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-	const req = (schema as Record<string, unknown>)["required"];
+function extractRequired(schema: SchemaLike): Set<string> {
+	const req = asObjectSchema(schema)?.["required"];
 	if (Array.isArray(req)) {
 		const strings = req.filter((s): s is string => typeof s === "string");
 		return new Set(strings);
@@ -80,21 +95,20 @@ function extractRequired(schema: unknown): Set<string> {
 export function flattenSchemas(
 	toolName: string,
 	schemas: {
-		params?: unknown;
-		query?: unknown;
-		body?: unknown;
+		params?: SchemaLike;
+		query?: SchemaLike;
+		body?: SchemaLike;
 	},
 ): FlattenResult {
 	const properties: Record<string, JsonSchemaProperty> = {};
 	const required: string[] = [];
 	const origins: PropertyOrigin[] = [];
 	const warnings: string[] = [];
-	const seen = new Map<string, Bucket>();
 
-	const buckets: Bucket[] = ["params", "query", "body"];
+	const requestParts: RequestPart[] = ["params", "query", "body"];
 
-	for (const bucket of buckets) {
-		const raw = schemas[bucket];
+	for (const requestPart of requestParts) {
+		const raw = schemas[requestPart];
 		if (raw === null || raw === undefined) continue;
 
 		const props = extractProperties(raw);
@@ -103,23 +117,21 @@ export function flattenSchemas(
 		const requiredSet = extractRequired(raw);
 
 		for (const [name, rawProp] of Object.entries(props)) {
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-			const prop = (typeof rawProp === "object" && rawProp !== null ? rawProp : {}) as Record<string, unknown>;
+			const prop = asObjectRecord(rawProp) ?? {};
 
 			// Collision detection
-			const existing = seen.get(name);
+			const existing = origins.find((origin) => origin.name === name)?.part;
 			if (existing !== undefined) {
 				warnings.push(
-					`[mcp] Tool "${toolName}": property "${name}" exists in both ${existing} and ${bucket} — ${bucket} will take precedence`,
+					`[mcp] Tool "${toolName}": property "${name}" exists in both ${existing} and ${requestPart} — ${requestPart} will take precedence`,
 				);
 			}
-			seen.set(name, bucket);
 
 			// Missing description warning
 			const description = typeof prop["description"] === "string" ? prop["description"] : undefined;
 			if (description === undefined || description === "") {
 				warnings.push(
-					`[mcp] Tool "${toolName}": property "${name}" (${bucket}) is missing a description`,
+					`[mcp] Tool "${toolName}": property "${name}" (${requestPart}) is missing a description`,
 				);
 			}
 
@@ -132,11 +144,11 @@ export function flattenSchemas(
 			properties[name] = clean;
 
 			// All params are required; query/body follow the schema's required array
-			if (bucket === "params" || requiredSet.has(name)) {
+			if (requestPart === "params" || requiredSet.has(name)) {
 				required.push(name);
 			}
 
-			origins.push({ name, bucket });
+			origins.push({ name, part: requestPart });
 		}
 	}
 
@@ -152,20 +164,24 @@ export function flattenSchemas(
  * the property origins from flattenSchemas.
  */
 export function unflattenArgs(
-	args: Record<string, unknown>,
+	args: JsonObject,
 	origins: PropertyOrigin[],
-): { params: Record<string, unknown>; query: Record<string, unknown>; body: Record<string, unknown> } {
-	const params: Record<string, unknown> = {};
-	const query: Record<string, unknown> = {};
-	const body: Record<string, unknown> = {};
-
-	const bucketMap: Record<Bucket, Record<string, unknown>> = { params, query, body };
+): {
+	params: JsonObject;
+	query: JsonObject;
+	body: JsonObject;
+} {
+	const requestParts: Record<RequestPart, JsonObject> = {
+		params: {},
+		query: {},
+		body: {},
+	};
 
 	for (const origin of origins) {
 		if (origin.name in args) {
-			bucketMap[origin.bucket][origin.name] = args[origin.name];
+			requestParts[origin.part][origin.name] = args[origin.name];
 		}
 	}
 
-	return { params, query, body };
+	return requestParts;
 }

@@ -29,7 +29,7 @@ import {
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 
 import { deriveToolName } from "./naming.js";
-import { flattenSchemas, unflattenArgs } from "./schema.js";
+import { asSchemaLike, flattenSchemas, unflattenArgs } from "./schema.js";
 import type { FlattenResult } from "./schema.js";
 import { toMcpContent } from "./unwrap.js";
 
@@ -102,9 +102,9 @@ function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
 			`${method} ${routePath}`;
 
 		const flatten = flattenSchemas(name, {
-			params: hooks["params"],
-			query: hooks["query"],
-			body: hooks["body"],
+			params: asSchemaLike(hooks["params"]),
+			query: asSchemaLike(hooks["query"]),
+			body: asSchemaLike(hooks["body"]),
 		});
 
 		for (const warning of flatten.warnings) {
