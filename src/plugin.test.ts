@@ -304,7 +304,7 @@ describe("MCP Plugin Integration", () => {
   });
 
   it("sends an empty JSON object for empty object body schemas", async () => {
-    const app = new Elysia()
+    const testApp = new Elysia()
       .post(
         "/empty-body",
         ({ body }) => ({
@@ -318,9 +318,9 @@ describe("MCP Plugin Integration", () => {
       )
       .use(mcp({ name: "test" }));
 
-    await app.handle(new Request("http://localhost/health"));
-    await initializeMcp(app);
-    const result = await callTool(app, "create_empty_body");
+    await testApp.handle(new Request("http://localhost/health"));
+    await initializeMcp(testApp);
+    const result = await callTool(testApp, "create_empty_body");
 
     const data = parseContent(result);
     expect(data["receivedBody"]).toEqual({});
@@ -328,7 +328,7 @@ describe("MCP Plugin Integration", () => {
   });
 
   it("sends an empty JSON object when all body fields are optional", async () => {
-    const app = new Elysia()
+    const testApp = new Elysia()
       .patch(
         "/optional-body",
         ({ body }) => ({
@@ -344,9 +344,9 @@ describe("MCP Plugin Integration", () => {
       )
       .use(mcp({ name: "test" }));
 
-    await app.handle(new Request("http://localhost/health"));
-    await initializeMcp(app);
-    const result = await callTool(app, "update_optional_body");
+    await testApp.handle(new Request("http://localhost/health"));
+    await initializeMcp(testApp);
+    const result = await callTool(testApp, "update_optional_body");
 
     const data = parseContent(result);
     expect(data["receivedBody"]).toEqual({});
