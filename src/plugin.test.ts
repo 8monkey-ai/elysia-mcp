@@ -429,6 +429,144 @@ describe("MCP Plugin Configuration", () => {
   });
 });
 
+describe("MCP Plugin outputSchema", () => {
+  it("includes outputSchema for routes with type:object response schema", async () => {
+    const app = new Elysia()
+      .get("/user/:id", ({ params }) => ({ id: params["id"], name: "Alice" }), {
+        params: t.Object({ id: t.String({ description: "User ID" }) }),
+        response: t.Object({
+          id: t.String({ description: "User ID" }),
+          name: t.String({ description: "User name" }),
+        }),
+        detail: { mcp: true },
+      })
+      .use(mcp({ name: "test" }));
+
+    await app.handle(new Request("http://localhost/health"));
+    await initializeMcp(app);
+    const result = await listTools(app);
+
+    const found = result.result.tools.find((entry) => entry.name === "get_user");
+    expect(found).toBeDefined();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const outputSchema = (found as Record<string, unknown>)["outputSchema"] as
+      | Record<string, unknown>
+      | undefined;
+    expect(outputSchema).toBeDefined();
+    expect(outputSchema?.["type"]).toBe("object");
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const props = outputSchema?.["properties"] as Record<string, Record<string, unknown>> | undefined;
+    expect(props?.["id"]?.["description"]).toBe("User ID");
+    expect(props?.["name"]?.["description"]).toBe("User name");
+  });
+
+  it("does not include outputSchema for routes with array response schema", async () => {
+    const app = new Elysia()
+      .get("/users", () => [{ id: 1 }], {
+        response: t.Array(t.Object({ id: t.Number() })),
+        detail: { mcp: true },
+      })
+      .use(mcp({ name: "test" }));
+
+    await app.handle(new Request("http://localhost/health"));
+    await initializeMcp(app);
+    const result = await listTools(app);
+
+    const found = result.result.tools.find((entry) => entry.name === "list_users");
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const outputSchema = (found as Record<string, unknown>)["outputSchema"];
+    expect(outputSchema).toBeUndefined();
+  });
+
+  it("does not include outputSchema for routes without response schema", async () => {
+    const app = new Elysia()
+      .get("/items", () => [{ id: 1 }], {
+        detail: { mcp: true },
+      })
+      .use(mcp({ name: "test" }));
+
+    await app.handle(new Request("http://localhost/health"));
+    await initializeMcp(app);
+    const result = await listTools(app);
+
+    const found = result.result.tools.find((entry) => entry.name === "list_items");
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const outputSchema = (found as Record<string, unknown>)["outputSchema"];
+    expect(outputSchema).toBeUndefined();
+  });
+
+  it("extracts 200 schema from status-code map", async () => {
+    const app = new Elysia()
+      .get("/status", () => ({ ok: true }), {
+        response: {
+          200: t.Object({ ok: t.Boolean({ description: "Status flag" }) }),
+          500: t.Object({ error: t.String() }),
+        },
+        detail: { mcp: true },
+      })
+      .use(mcp({ name: "test" }));
+
+    await app.handle(new Request("http://localhost/health"));
+    await initializeMcp(app);
+    const result = await listTools(app);
+
+    const found = result.result.tools.find((entry) => entry.name === "list_status");
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const outputSchema = (found as Record<string, unknown>)["outputSchema"] as
+      | Record<string, unknown>
+      | undefined;
+    expect(outputSchema).toBeDefined();
+    expect(outputSchema?.["type"]).toBe("object");
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const props = outputSchema?.["properties"] as Record<string, Record<string, unknown>> | undefined;
+    expect(props?.["ok"]).toBeDefined();
+    expect(props?.["error"]).toBeUndefined();
+  });
+
+  it("returns structuredContent when tool has outputSchema", async () => {
+    const app = new Elysia()
+      .get("/user/:id", ({ params }) => ({ id: params["id"], name: "Alice" }), {
+        params: t.Object({ id: t.String({ description: "User ID" }) }),
+        response: t.Object({
+          id: t.String(),
+          name: t.String(),
+        }),
+        detail: { mcp: true },
+      })
+      .use(mcp({ name: "test" }));
+
+    await app.handle(new Request("http://localhost/health"));
+    await initializeMcp(app);
+    const result = await callTool(app, "get_user", { id: "42" });
+
+    // Should have both content and structuredContent
+    expect(result.result.content[0]?.type).toBe("text");
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const structured = (result.result as Record<string, unknown>)["structuredContent"] as
+      | Record<string, unknown>
+      | undefined;
+    expect(structured).toBeDefined();
+    expect(structured?.["id"]).toBe("42");
+    expect(structured?.["name"]).toBe("Alice");
+  });
+
+  it("does not return structuredContent when tool has no outputSchema", async () => {
+    const app = new Elysia()
+      .get("/items", () => ({ id: 1 }), {
+        detail: { mcp: true },
+      })
+      .use(mcp({ name: "test" }));
+
+    await app.handle(new Request("http://localhost/health"));
+    await initializeMcp(app);
+    const result = await callTool(app, "list_items");
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const structured = (result.result as Record<string, unknown>)["structuredContent"];
+    expect(structured).toBeUndefined();
+  });
+});
+
 describe("MCP Plugin Lifecycle Verification", () => {
   it("runs beforeHandle hooks on tool calls (e.g. auth)", async () => {
     const log: string[] = [];

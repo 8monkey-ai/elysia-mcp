@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import { Type } from "@sinclair/typebox";
 
-import { flattenSchemas, unflattenArgs } from "./schema.js";
+import { cleanResponseSchema, flattenSchemas, unflattenArgs } from "./schema.js";
 
 describe("flattenSchemas", () => {
   it("merges params, query, and body into a flat schema", () => {
@@ -92,5 +92,60 @@ describe("unflattenArgs", () => {
 
     expect(result.params).toEqual({ id: "123" });
     expect(result.query).toEqual({});
+  });
+});
+
+describe("cleanResponseSchema", () => {
+  it("returns a type:object schema directly", () => {
+    const schema = Type.Object({
+      id: Type.String({ description: "The ID" }),
+      name: Type.String({ description: "The name" }),
+    });
+
+    const result = cleanResponseSchema(schema);
+    expect(result).toBeDefined();
+    expect(result?.type).toBe("object");
+    expect(result?.properties).toHaveProperty("id");
+    expect(result?.properties).toHaveProperty("name");
+    expect(result?.properties["id"]?.description).toBe("The ID");
+    expect(result?.required).toContain("id");
+    expect(result?.required).toContain("name");
+  });
+
+  it("extracts the 200 schema from a status-code map", () => {
+    const schema = {
+      200: Type.Object({ ok: Type.Boolean() }),
+      500: Type.Object({ error: Type.String() }),
+    };
+
+    const result = cleanResponseSchema(schema);
+    expect(result).toBeDefined();
+    expect(result?.type).toBe("object");
+    expect(result?.properties).toHaveProperty("ok");
+    expect(result?.properties).not.toHaveProperty("error");
+  });
+
+  it("returns undefined for array schemas", () => {
+    const schema = Type.Array(Type.Object({ id: Type.Number() }));
+    expect(cleanResponseSchema(schema)).toBeUndefined();
+  });
+
+  it("returns undefined for null/undefined", () => {
+    expect(cleanResponseSchema(null)).toBeUndefined();
+    // eslint-disable-next-line unicorn/no-useless-undefined
+    expect(cleanResponseSchema(undefined)).toBeUndefined();
+  });
+
+  it("strips TypeBox-internal keys from properties", () => {
+    const schema = Type.Object({ id: Type.String() });
+    const result = cleanResponseSchema(schema);
+
+    // TypeBox adds Symbol keys and [Kind]/[Hint] string keys.
+    // Verify no keys start with "[" in the cleaned properties.
+    for (const prop of Object.values(result?.properties ?? {})) {
+      for (const key of Object.keys(prop)) {
+        expect(key.startsWith("[")).toBe(false);
+      }
+    }
   });
 });

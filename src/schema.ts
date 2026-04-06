@@ -168,6 +168,62 @@ export function flattenSchemas(
  * Unflatten a flat args object back into { params, query, body } based on
  * the property origins from flattenSchemas.
  */
+/**
+ * Extract and clean a response schema for use as an MCP `outputSchema`.
+ *
+ * MCP requires `outputSchema` to have `type: "object"` at the root.
+ * This function handles three shapes from Elysia:
+ * - A single schema with `type: "object"` → used directly
+ * - A status-code map like `{ 200: schema, 400: schema }` → extracts the 200 schema
+ * - Anything else (arrays, primitives, missing) → returns undefined
+ *
+ * TypeBox-internal keys (starting with `[`) are stripped from properties.
+ */
+export function cleanResponseSchema(
+  raw: unknown,
+): FlatJsonSchema | undefined {
+  const record = asObjectRecord(raw);
+  if (record === undefined) return undefined;
+
+  // Case 1: direct schema with type: "object"
+  if (record["type"] === "object") {
+    return stripInternalKeys(record);
+  }
+
+  // Case 2: status-code map — extract the 200 schema
+  const twoHundred = asObjectRecord(record["200"]);
+  if (twoHundred !== undefined && twoHundred["type"] === "object") {
+    return stripInternalKeys(twoHundred);
+  }
+
+  return undefined;
+}
+
+/** Strip TypeBox-internal keys from a JSON Schema object and its properties */
+function stripInternalKeys(schema: Record<string, unknown>): FlatJsonSchema {
+  const properties: Record<string, JsonSchemaProperty> = {};
+  const rawProps = asObjectRecord(schema["properties"]);
+
+  if (rawProps !== undefined) {
+    for (const [name, rawProp] of Object.entries(rawProps)) {
+      const prop = asObjectRecord(rawProp) ?? {};
+      const clean: JsonSchemaProperty = {};
+      for (const [k, v] of Object.entries(prop)) {
+        if (typeof k !== "string" || k.startsWith("[")) continue;
+        clean[k] = v;
+      }
+      properties[name] = clean;
+    }
+  }
+
+  const req = schema["required"];
+  const required = Array.isArray(req)
+    ? req.filter((s): s is string => typeof s === "string")
+    : [];
+
+  return { type: "object", properties, required };
+}
+
 export function unflattenArgs(
   args: JsonObject,
   origins: PropertyOrigin[],

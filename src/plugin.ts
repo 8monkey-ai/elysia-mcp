@@ -26,8 +26,8 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 import { deriveToolName } from "./naming.js";
-import { asSchemaLike, flattenSchemas, unflattenArgs } from "./schema.js";
-import type { FlattenResult } from "./schema.js";
+import { asSchemaLike, cleanResponseSchema, flattenSchemas, unflattenArgs } from "./schema.js";
+import type { FlatJsonSchema, FlattenResult } from "./schema.js";
 import { responseToMcpContent } from "./unwrap.js";
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -60,6 +60,7 @@ interface DiscoveredTool {
   pathSegments: string[];
   hasBody: boolean;
   flatten: FlattenResult;
+  outputSchema?: FlatJsonSchema;
 }
 
 // ─── Route Discovery ─────────────────────────────────────────────────
@@ -71,6 +72,7 @@ type RouteHooks = {
   params?: unknown;
   query?: unknown;
   body?: unknown;
+  response?: unknown;
 };
 
 function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
@@ -111,7 +113,10 @@ function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
       console.warn(warning);
     }
 
-    tools.push({ name, description, method, pathSegments, hasBody, flatten });
+    // Extract response schema for MCP outputSchema (must be type: "object")
+    const outputSchema = cleanResponseSchema(hooks.response);
+
+    tools.push({ name, description, method, pathSegments, hasBody, flatten, outputSchema });
   }
 
   return tools;
@@ -223,6 +228,22 @@ function createMcpServer(
       };
     }
 
+    // When the tool declares an outputSchema and the response is a JSON object,
+    // include structuredContent so MCP clients can consume typed data.
+    if (
+      tool.outputSchema !== undefined &&
+      result.parsed !== null &&
+      result.parsed !== undefined &&
+      typeof result.parsed === "object" &&
+      !Array.isArray(result.parsed)
+    ) {
+      return {
+        content: result.content,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        structuredContent: result.parsed as Record<string, unknown>,
+      };
+    }
+
     return result;
   });
 
@@ -263,6 +284,7 @@ export function mcp(options: McpPluginOptions = {}) {
         name: tool.name,
         description: tool.description,
         inputSchema: tool.flatten.schema,
+        ...(tool.outputSchema === undefined ? {} : { outputSchema: tool.outputSchema }),
       })),
     };
 
