@@ -478,6 +478,45 @@ describe("MCP Plugin outputSchema", () => {
     expect(outputSchema).toBeUndefined();
   });
 
+  it("warns when response schema is not type:object", () => {
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(String(args[0]));
+    };
+    try {
+      new Elysia()
+        .get("/users", () => [{ id: 1 }], {
+          response: t.Array(t.Object({ id: t.Number() })),
+          detail: { mcp: true },
+        })
+        .use(mcp({ name: "test" }));
+
+      expect(warnings.some((w) => w.includes("outputSchema omitted"))).toBe(true);
+    } finally {
+      console.warn = origWarn;
+    }
+  });
+
+  it("does not warn when no response schema is defined", () => {
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(String(args[0]));
+    };
+    try {
+      new Elysia()
+        .get("/items", () => [{ id: 1 }], {
+          detail: { mcp: true },
+        })
+        .use(mcp({ name: "test" }));
+
+      expect(warnings.some((w) => w.includes("outputSchema omitted"))).toBe(false);
+    } finally {
+      console.warn = origWarn;
+    }
+  });
+
   it("does not include outputSchema for routes without response schema", async () => {
     const app = new Elysia()
       .get("/items", () => [{ id: 1 }], {

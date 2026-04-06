@@ -116,6 +116,12 @@ function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
     // Extract response schema for MCP outputSchema (must be type: "object")
     const outputSchema = cleanResponseSchema(hooks.response);
 
+    if (hooks.response !== undefined && hooks.response !== null && outputSchema === undefined) {
+      console.warn(
+        `[mcp] Tool "${name}": response schema is not type: "object" — outputSchema omitted (structuredContent unavailable)`,
+      );
+    }
+
     tools.push({ name, description, method, pathSegments, hasBody, flatten, outputSchema });
   }
 
