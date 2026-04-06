@@ -16,6 +16,13 @@ interface McpToolCallResponse {
   result: CallToolResult;
 }
 
+interface McpErrorResponse {
+  error: {
+    code: number;
+    message: string;
+  };
+}
+
 /** Extract the text from the first MCP content item (narrowing the union). */
 function firstText(result: McpToolCallResponse): string {
   const item = result.result.content[0];
@@ -321,10 +328,10 @@ describe("MCP Plugin Integration", () => {
 
   it("returns an error for unknown tools", async () => {
     await initializeMcp(app);
-    const result = await callTool(app, "nonexistent_tool");
+    const result = await mcpRequest<McpErrorResponse>(app, callToolRequest("nonexistent_tool"));
 
-    expect(result.result.isError).toBe(true);
-    expect(firstText(result)).toContain("Unknown tool");
+    expect(result.error.code).toBe(-32602);
+    expect(result.error.message).toContain("Tool nonexistent_tool not found");
   });
 
   it("does not interfere with regular REST endpoints", async () => {

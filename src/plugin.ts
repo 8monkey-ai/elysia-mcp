@@ -23,7 +23,12 @@ declare module "elysia" {
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import {
+  CallToolRequestSchema,
+  ErrorCode,
+  ListToolsRequestSchema,
+  McpError,
+} from "@modelcontextprotocol/sdk/types.js";
 
 import { deriveToolName } from "./naming.js";
 import { asSchemaLike, cleanResponseSchema, flattenSchemas, unflattenArgs } from "./schema.js";
@@ -214,10 +219,7 @@ function createMcpServer(
     const tool = toolMap.get(toolName);
 
     if (!tool) {
-      return {
-        isError: true,
-        content: [{ type: "text" as const, text: `Unknown tool: ${toolName}` }],
-      };
+      throw new McpError(ErrorCode.InvalidParams, `Tool ${toolName} not found`);
     }
 
     const args = request.params.arguments ?? {};
