@@ -57,7 +57,8 @@ interface DiscoveredTool {
   name: string;
   description: string;
   method: string;
-  path: string;
+  pathSegments: string[];
+  hasBody: boolean;
   flatten: FlattenResult;
 }
 
@@ -93,6 +94,8 @@ function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
     const mcpDescription =
       typeof mcpMeta?.["description"] === "string" ? mcpMeta["description"] : undefined;
     const name = mcpName ?? deriveToolName(method, routePath);
+    const pathSegments = routePath.split("/");
+    const hasBody = method !== "GET" && method !== "HEAD";
 
     const summary = detail?.["summary"];
     const description =
@@ -110,7 +113,7 @@ function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
       console.warn(warning);
     }
 
-    tools.push({ name, description, method, path: routePath, flatten });
+    tools.push({ name, description, method, pathSegments, hasBody, flatten });
   }
 
   return tools;
@@ -127,8 +130,7 @@ function buildRequest(
 
   // Substitute path parameters (segment-safe to avoid prefix collisions
   // e.g. `:id` matching `:id2`)
-  const resolvedPath = tool.path
-    .split("/")
+  const resolvedPath = tool.pathSegments
     .map((segment) => {
       if (!segment.startsWith(":")) return segment;
       const key = segment.slice(1);
@@ -151,17 +153,17 @@ function buildRequest(
   const headers = new Headers(originalRequest.headers);
 
   const method = tool.method;
-  const hasBody = method !== "GET" && method !== "HEAD";
+  const hasJsonBody = tool.hasBody && Object.keys(body).length > 0;
 
   // Sanitize content headers — the original values correspond to the
   // JSON-RPC payload, not the synthetic request's body.
   headers.delete("content-length");
-  if (!hasBody || Object.keys(body).length === 0) {
-    headers.delete("content-type");
-  } else {
+  if (hasJsonBody) {
     headers.set("content-type", "application/json");
+  } else {
+    headers.delete("content-type");
   }
-  const bodyContent = hasBody && Object.keys(body).length > 0 ? JSON.stringify(body) : undefined;
+  const bodyContent = hasJsonBody ? JSON.stringify(body) : undefined;
 
   return new Request(url, {
     method,

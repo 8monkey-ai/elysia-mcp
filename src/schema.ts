@@ -107,6 +107,7 @@ export function flattenSchemas(
   const required: string[] = [];
   const origins: PropertyOrigin[] = [];
   const warnings: string[] = [];
+  const seen = new Map<string, RequestPart>();
 
   const requestParts: RequestPart[] = ["params", "query", "body"];
 
@@ -123,12 +124,13 @@ export function flattenSchemas(
       const prop = asObjectRecord(rawProp) ?? {};
 
       // Collision detection
-      const existing = origins.find((origin) => origin.name === name)?.part;
+      const existing = seen.get(name);
       if (existing !== undefined) {
         warnings.push(
           `[mcp] Tool "${toolName}": property "${name}" exists in both ${existing} and ${requestPart} — ${requestPart} will take precedence`,
         );
       }
+      seen.set(name, requestPart);
 
       // Missing description warning
       const description = typeof prop["description"] === "string" ? prop["description"] : undefined;
