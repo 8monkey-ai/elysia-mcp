@@ -6,21 +6,7 @@ Turn your existing Elysia routes into MCP tools — no manual registration, no s
 
 The [Model Context Protocol](https://modelcontextprotocol.io/) lets AI agents discover and call tools over a standard JSON-RPC interface. If you already have an Elysia API with typed schemas and handlers, you shouldn't have to rewrite all of that as MCP tool definitions.
 
-`@8monkey/elysia-mcp` bridges the gap: opt in a route with `detail: { mcp: true }`, call `.use(mcp())`, and every opted-in endpoint becomes a callable MCP tool — with its name, description, and input schema derived from what you already wrote.
-
-## How it differs from existing solutions
-
-| | **@8monkey/elysia-mcp** | [kerlos/elysia-mcp](https://github.com/kerlos/elysia-mcp) | [keithagroves/Elysia-mcp](https://github.com/keithagroves/Elysia-mcp) |
-|---|---|---|---|
-| **Approach** | Auto-discovers existing routes | Manual tool/resource/prompt registration via setup callback | Manual McpServer + SSE transport wiring |
-| **Schema source** | Reuses your route's params/query/body schemas | Separate Zod schemas per tool | Separate Zod schemas per tool |
-| **Handler reuse** | Routes run through the full Elysia lifecycle (`app.handle()`) | Standalone handler functions | Standalone handler functions |
-| **Tool naming** | Auto-generated from HTTP method + path (with override) | Manually specified | Manually specified |
-| **Transport** | Streamable HTTP (stateless, one POST endpoint) | Streamable HTTP (stateful, session management) | SSE (Server-Sent Events) |
-| **Opt-in model** | Per-route via `detail.mcp` | All-or-nothing in setup callback | All-or-nothing in setup callback |
-| **MCP scope** | Tools only (v1) | Tools, Resources, Prompts, Logging | Tools, Resources, Prompts |
-
-The core philosophy: **your REST API _is_ the source of truth**. Other plugins ask you to define tools separately from your routes. This one treats your routes as the tool definitions.
+`@8monkey/elysia-mcp` bridges the gap: add `.use(mcp())` and every endpoint becomes a callable MCP tool — with its name, description, and input schema derived from what you already wrote.
 
 ## Key highlights
 
@@ -32,6 +18,15 @@ The core philosophy: **your REST API _is_ the source of truth**. Other plugins a
 - **Response unwrapping** — automatically unwraps Elysia `status()` responses so MCP clients receive clean data
 - **Smart naming** — `GET /users` becomes `list_users`, `GET /users/:id` becomes `get_user`, `POST /users` becomes `create_user`, and nested paths like `GET /users/:uid/posts` become `list_user_posts`
 
+## How it differs from existing solutions
+
+Compared to [kerlos/elysia-mcp](https://github.com/kerlos/elysia-mcp) and [keithagroves/Elysia-mcp](https://github.com/keithagroves/Elysia-mcp), which require manual tool registration with separate Zod schemas and standalone handlers:
+
+- **Auto-discovery** — routes become tools automatically; no registration callbacks
+- **Schema reuse** — uses your existing TypeBox/Standard Schema definitions instead of duplicating with Zod
+- **Full lifecycle execution** — tool calls run through `app.handle()`, not standalone functions, so all middleware applies
+- **Streamable HTTP** — stateless POST endpoint instead of stateful sessions or SSE connections
+
 ## Install
 
 ```bash
@@ -40,63 +35,82 @@ bun add @8monkey/elysia-mcp
 
 Peer dependency: `elysia >= 1.0.0`
 
-## Quick start
+## Basic usage
+
+Add `.use(mcp())` after your routes — that's it. All routes become MCP tools:
 
 ```typescript
-import { Elysia, t } from "elysia";
+import { Elysia } from "elysia";
 import { mcp } from "@8monkey/elysia-mcp";
 
 const app = new Elysia()
-  .get("/users", () => [{ id: 1, name: "Alice" }], {
-    detail: { summary: "List all users", mcp: true },
-  })
-  .get("/users/:id", ({ params: { id } }) => ({ id, name: "Alice" }), {
-    params: t.Object({
-      id: t.String({ description: "The user's unique ID" }),
-    }),
-    detail: { summary: "Get user by ID", mcp: true },
-  })
-  .post("/users", ({ body }) => ({ id: 2, ...body }), {
-    body: t.Object({
-      name: t.String({ description: "Display name" }),
-      email: t.String({ description: "Email address" }),
-    }),
-    detail: { summary: "Create a user", mcp: true },
-  })
-  // .use(mcp()) must come after all MCP-eligible routes
-  .use(mcp({ name: "my-api", version: "1.0.0" }))
+  .get("/users", () => db.users.findAll())
+  .get("/users/:id", ({ params }) => db.users.find(params.id))
+  .post("/users", ({ body }) => db.users.create(body))
+  .use(mcp())
   .listen(3000);
 ```
 
-This exposes a `POST /mcp` endpoint that speaks the MCP JSON-RPC protocol. An MCP client calling `tools/list` will see:
+This exposes a `POST /mcp` endpoint. An MCP client calling `tools/list` will see `list_users`, `get_user`, and `create_user`.
 
-| Tool | Description |
-|---|---|
-| `list_users` | List all users |
-| `get_user` | Get user by ID |
-| `create_user` | Create a user |
+## Adding descriptions
 
-## Configuration
+Use `detail.summary` to give tools human-readable descriptions:
 
 ```typescript
-mcp({
-  name: "my-api",     // MCP server name (default: "elysia-mcp")
-  version: "1.0.0",   // MCP server version (default: "1.0.0")
-  path: "/mcp",       // Endpoint path (default: "/mcp")
+.get("/users", () => db.users.findAll(), {
+  detail: { summary: "List all users" },
 })
 ```
 
-## Route opt-in
+## Adding input schemas
 
-Add `mcp: true` to a route's `detail` to expose it as a tool:
+TypeBox schemas on params, query, and body are automatically flattened into the tool's input schema:
 
 ```typescript
-.get("/items", handler, {
-  detail: { mcp: true },
+import { t } from "elysia";
+
+.get("/users/:id", ({ params }) => db.users.find(params.id), {
+  params: t.Object({
+    id: t.String({ description: "The user's unique ID" }),
+  }),
+  detail: { summary: "Get user by ID" },
 })
 ```
 
-Override the auto-generated name or description:
+MCP tools accept a single flat input object. The plugin merges `params`, `query`, and `body` into one schema:
+
+```text
+Route: PATCH /users/:id  (params: { id }, query: { fields }, body: { name, email })
+  ↓
+MCP Tool Input: { id: string, fields?: string, name: string, email: string }
+```
+
+Property descriptions are preserved. The plugin warns at startup if properties collide across buckets or lack descriptions.
+
+## Opting routes out
+
+By default, all routes are exposed. Opt out individual routes with `mcp: false`:
+
+```typescript
+.get("/health", () => ({ status: "ok" }), {
+  detail: { mcp: false },
+})
+```
+
+Or flip the default — set `allRoutes: false` to require explicit opt-in:
+
+```typescript
+.get("/users", () => db.users.findAll(), {
+  detail: { mcp: true },  // only this route becomes a tool
+})
+.get("/health", () => "ok")  // not exposed
+.use(mcp({ allRoutes: false }))
+```
+
+## Overriding tool names and descriptions
+
+Auto-generated names follow a `{verb}_{resource}` convention. Override with `mcp: { name, description }`:
 
 ```typescript
 .get("/items", handler, {
@@ -106,9 +120,7 @@ Override the auto-generated name or description:
 })
 ```
 
-Routes without `detail.mcp` are left untouched — they continue working as normal REST endpoints.
-
-## Tool naming conventions
+### Naming conventions
 
 | Method + Path | Generated Name |
 |---|---|
@@ -116,22 +128,19 @@ Routes without `detail.mcp` are left untouched — they continue working as norm
 | `GET /users/:id` | `get_user` |
 | `POST /users` | `create_user` |
 | `PATCH /users/:id` | `update_user` |
-| `PUT /users/:id` | `update_user` |
 | `DELETE /users/:id` | `delete_user` |
 | `GET /users/:uid/posts` | `list_user_posts` |
-| `GET /users/:uid/posts/:id` | `get_user_post` |
 
-## Schema flattening
+## Configuration
 
-MCP tools accept a single flat input object. The plugin merges `params`, `query`, and `body` into one schema:
-
+```typescript
+mcp({
+  name: "my-api",       // MCP server name (default: "elysia-mcp")
+  version: "1.0.0",     // MCP server version (default: "1.0.0")
+  path: "/mcp",         // Endpoint path (default: "/mcp")
+  allRoutes: true,      // Expose all routes by default (default: true)
+})
 ```
-Route: PATCH /users/:id  (params: { id }, query: { fields }, body: { name, email })
-  ↓
-MCP Tool Input: { id: string, fields?: string, name: string, email: string }
-```
-
-Property descriptions from TypeBox (or any Standard Schema-compatible library) are preserved. The plugin warns at startup if properties collide across buckets or lack descriptions.
 
 ## How tool calls work
 

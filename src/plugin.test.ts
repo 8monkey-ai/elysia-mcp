@@ -156,7 +156,9 @@ function createTestApp() {
 			},
 		)
 		// Non-MCP route (should not appear as a tool)
-		.get("/health", () => ({ status: "ok" }))
+		.get("/health", () => ({ status: "ok" }), {
+			detail: { mcp: false },
+		})
 		// Mount MCP plugin
 		.use(mcp({ name: "test-api", version: "0.1.0" }));
 
@@ -360,6 +362,42 @@ describe("MCP Plugin Integration", () => {
 		expect(getUser?.inputSchema.type).toBe("object");
 		expect(getUser?.inputSchema.properties["id"]?.description).toBe("The user ID");
 		expect(getUser?.inputSchema.required).toContain("id");
+	});
+});
+
+describe("MCP Plugin allRoutes option", () => {
+	it("exposes all routes by default (allRoutes: true)", async () => {
+		const app = new Elysia()
+			.get("/users", () => [{ id: 1 }])
+			.get("/items", () => [{ id: 2 }])
+			.get("/health", () => "ok", { detail: { mcp: false } })
+			.use(mcp({ name: "test" }));
+
+		await app.handle(new Request("http://localhost/health"));
+		await mcpRequest(app, initRequest());
+		const result = (await mcpRequest(app, listToolsRequest())) as {
+			result: { tools: Array<{ name: string }> };
+		};
+		const toolNames = result.result.tools.map((t) => t.name);
+		expect(toolNames).toContain("list_users");
+		expect(toolNames).toContain("list_items");
+		expect(toolNames).not.toContain("list_health");
+	});
+
+	it("requires explicit opt-in when allRoutes is false", async () => {
+		const app = new Elysia()
+			.get("/users", () => [{ id: 1 }], { detail: { mcp: true } })
+			.get("/items", () => [{ id: 2 }])
+			.use(mcp({ name: "test", allRoutes: false }));
+
+		await app.handle(new Request("http://localhost/items"));
+		await mcpRequest(app, initRequest());
+		const result = (await mcpRequest(app, listToolsRequest())) as {
+			result: { tools: Array<{ name: string }> };
+		};
+		const toolNames = result.result.tools.map((t) => t.name);
+		expect(toolNames).toContain("list_users");
+		expect(toolNames).not.toContain("list_items");
 	});
 });
 

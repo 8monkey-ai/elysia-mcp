@@ -1,8 +1,10 @@
 /**
  * Elysia MCP Plugin
  *
- * Auto-discovers routes with `detail: { mcp: true }` and exposes them as MCP
- * tools via a POST endpoint handling the MCP JSON-RPC protocol.
+ * Auto-discovers routes and exposes them as MCP tools via a POST endpoint
+ * handling the MCP JSON-RPC protocol. By default all routes are included;
+ * opt out individual routes with `detail: { mcp: false }`, or set
+ * `allRoutes: false` to require explicit `detail: { mcp: true }`.
  *
  * Uses `app.handle()` for tool invocation — every MCP tool call goes through
  * the full Elysia lifecycle (derive, resolve, beforeHandle, afterHandle, error
@@ -34,6 +36,10 @@ export interface McpPluginOptions {
 	version?: string;
 	/** Endpoint path (default: "/mcp") */
 	path?: string;
+	/** Expose all routes as MCP tools by default (default: true).
+	 *  When true, every route becomes a tool unless it sets `mcp: false`.
+	 *  When false, only routes with `detail: { mcp: true }` are exposed. */
+	allRoutes?: boolean;
 }
 
 export interface McpToolMeta {
@@ -63,26 +69,29 @@ const mcpContext = new AsyncLocalStorage<McpRequestContext>();
 
 // ─── Route Discovery ─────────────────────────────────────────────────
 
-function discoverTools(app: Elysia): DiscoveredTool[] {
+function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
 	const tools: DiscoveredTool[] = [];
 	const routes = app.routes;
 
 	for (const route of routes) {
 		const detail = route.hooks?.detail as Record<string, unknown> | undefined;
-		if (!detail?.["mcp"]) continue;
+		const mcpValue = detail?.["mcp"];
 
-		const mcpMeta = detail["mcp"] as McpDetailValue;
+		// Skip routes that are explicitly opted out
+		if (mcpValue === false) continue;
+
+		// In opt-in mode, skip routes without `detail.mcp`
+		if (!allRoutes && !mcpValue) continue;
+
+		const mcpMeta = (mcpValue === true || mcpValue == null ? undefined : mcpValue) as McpToolMeta | undefined;
 		const method = route.method.toUpperCase();
 		const routePath = route.path;
 
-		const name =
-			typeof mcpMeta === "object" && mcpMeta.name
-				? mcpMeta.name
-				: deriveToolName(method, routePath);
+		const name = mcpMeta?.name ?? deriveToolName(method, routePath);
 
 		const description =
-			(typeof mcpMeta === "object" && mcpMeta.description) ||
-			(detail["summary"] as string | undefined) ||
+			mcpMeta?.description ||
+			(detail?.["summary"] as string | undefined) ||
 			`${method} ${routePath}`;
 
 		const flatten = flattenSchemas(name, {
@@ -235,12 +244,9 @@ function createMcpServer(
 /**
  * Create the Elysia MCP plugin.
  *
- * Usage:
- * ```typescript
- * const app = new Elysia()
- *   .get("/users", handler, { detail: { mcp: true } })
- *   .use(mcp({ name: "my-api", version: "1.0.0" }));
- * ```
+ * By default all routes are exposed as MCP tools. Set `allRoutes: false`
+ * to require explicit opt-in via `detail: { mcp: true }`, or opt out
+ * individual routes with `detail: { mcp: false }`.
  *
  * **Important:** `.use(mcp())` must come after all MCP-eligible routes are
  * registered, as route discovery happens at plugin mount time.
@@ -250,13 +256,14 @@ export function mcp(options: McpPluginOptions = {}) {
 		name = "elysia-mcp",
 		version = "1.0.0",
 		path = "/mcp",
+		allRoutes = true,
 	} = options;
 
 	// Return a function-style plugin to capture the parent Elysia app reference.
 	// This gives us access to app.routes (for discovery) and app.handle() (for
 	// tool invocation through the full lifecycle).
 	return (app: Elysia) => {
-		const tools = discoverTools(app);
+		const tools = discoverTools(app, allRoutes);
 
 		// Build a Map for O(1) tool lookup by name
 		const toolMap = new Map<string, DiscoveredTool>();
@@ -268,7 +275,7 @@ export function mcp(options: McpPluginOptions = {}) {
 		}
 
 		if (tools.length === 0) {
-			console.warn("[mcp] No routes with detail.mcp found — MCP server will have no tools");
+			console.warn("[mcp] No MCP-eligible routes found — MCP server will have no tools");
 		} else {
 			console.info(`[mcp] Discovered ${tools.length} tool(s): ${tools.map((t) => t.name).join(", ")}`);
 		}
