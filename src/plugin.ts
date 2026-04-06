@@ -225,7 +225,7 @@ function createMcpServer(
     // Build a synthetic request and run through the full Elysia lifecycle
     const syntheticRequest = buildRequest(tool, args, originalRequest);
     const response = await rootApp.handle(syntheticRequest);
-    const result = await responseToMcpContent(response);
+    const result = await responseToMcpContent(response, tool.outputSchema !== undefined);
 
     if (!response.ok) {
       return {

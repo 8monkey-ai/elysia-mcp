@@ -14,30 +14,32 @@ export type McpContentResult = {
 
 /**
  * Extract the response body from an HTTP Response and format it as MCP tool
- * content.  Parses JSON when the content-type indicates it; falls back to
- * plain text.  Returns both text content and the parsed data (when available)
- * so callers can use `structuredContent` for tools with `outputSchema`.
+ * content.  When {@link needsParsed} is true the JSON body is also parsed so
+ * callers can populate `structuredContent` for tools with `outputSchema`.
+ *
+ * Performance: skips `JSON.parse` entirely when `needsParsed` is false —
+ * the raw response text is used directly as the MCP text content, avoiding
+ * a parse → re-stringify round-trip.
  */
-export async function responseToMcpContent(response: Response): Promise<McpContentResult> {
-  const contentType = response.headers.get("content-type") ?? "";
+export async function responseToMcpContent(
+  response: Response,
+  needsParsed = false,
+): Promise<McpContentResult> {
   const raw = await response.text();
 
-  let text: string;
-  let parsed: unknown;
-
-  if (contentType.includes("application/json") && raw.length > 0) {
-    try {
-      parsed = JSON.parse(raw);
-      text = typeof parsed === "string" ? parsed : JSON.stringify(parsed);
-    } catch {
-      text = raw;
-    }
-  } else {
-    text = raw;
+  if (!needsParsed || raw.length === 0) {
+    return { content: [{ type: "text", text: raw }] };
   }
 
-  return {
-    content: [{ type: "text", text }],
-    parsed,
-  };
+  // Only parse when the caller needs the structured object.
+  // Use `raw` as-is for text content — it's already the serialized form.
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return {
+      content: [{ type: "text", text: raw }],
+      parsed,
+    };
+  } catch {
+    return { content: [{ type: "text", text: raw }] };
+  }
 }
