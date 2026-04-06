@@ -8,46 +8,29 @@ import type { TextContent } from "@modelcontextprotocol/sdk/types.js";
 
 type McpTextContent = { content: TextContent[] };
 
-function toTextContent(text: string): TextContent {
-  return { type: "text", text };
-}
-
 /**
- * Extract the response body from an HTTP Response.
- * Parses JSON when the content-type indicates it; falls back to plain text.
+ * Extract the response body from an HTTP Response and format it as MCP tool
+ * content.  Parses JSON when the content-type indicates it; falls back to
+ * plain text.  Always returns `{ content: [{ type: "text", text }] }`.
  */
-export async function parseResponseData(response: Response): Promise<unknown> {
+export async function responseToMcpContent(response: Response): Promise<McpTextContent> {
   const contentType = response.headers.get("content-type") ?? "";
-  const text = await response.text();
+  const raw = await response.text();
 
-  if (!contentType.includes("application/json") || text.length === 0) {
-    return text;
-  }
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-/**
- * Format a handler result as MCP tool content.
- * Always returns `{ content: [{ type: "text", text: string }] }`.
- */
-export function toMcpContent(data: unknown): McpTextContent {
   let text: string;
-  if (typeof data === "string") {
-    text = data;
-  } else {
+
+  if (contentType.includes("application/json") && raw.length > 0) {
     try {
-      text = JSON.stringify(data);
+      const parsed: unknown = JSON.parse(raw);
+      text = typeof parsed === "string" ? parsed : JSON.stringify(parsed);
     } catch {
-      text = String(data);
+      text = raw;
     }
+  } else {
+    text = raw;
   }
 
   return {
-    content: [toTextContent(text)],
+    content: [{ type: "text", text }],
   };
 }

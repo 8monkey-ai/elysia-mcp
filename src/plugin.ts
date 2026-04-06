@@ -28,7 +28,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { deriveToolName } from "./naming.js";
 import { asSchemaLike, flattenSchemas, unflattenArgs } from "./schema.js";
 import type { FlattenResult } from "./schema.js";
-import { parseResponseData, toMcpContent } from "./unwrap.js";
+import { responseToMcpContent } from "./unwrap.js";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -214,8 +214,7 @@ function createMcpServer(
     // Build a synthetic request and run through the full Elysia lifecycle
     const syntheticRequest = buildRequest(tool, args, originalRequest);
     const response = await rootApp.handle(syntheticRequest);
-    const data = await parseResponseData(response);
-    const result = toMcpContent(data);
+    const result = await responseToMcpContent(response);
 
     if (!response.ok) {
       return {
