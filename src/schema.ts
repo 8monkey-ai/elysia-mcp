@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion -- schema inputs are known JSON Schema objects */
+
 /**
  * Schema flattening for MCP tool input schemas.
  *
@@ -43,17 +45,14 @@ export interface FlattenResult {
  * TypeBox schemas *are* JSON Schema objects at runtime, so `schema.properties`
  * is the standard way to access them.
  */
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && value !== undefined && typeof value === "object" && !Array.isArray(value);
-}
-
 function extractProperties(
 	schema: unknown,
 ): Record<string, unknown> | undefined {
-	if (!isRecord(schema)) return undefined;
+	if (schema === null || schema === undefined || typeof schema !== "object") return undefined;
 
-	if (schema["type"] === "object" && isRecord(schema["properties"])) {
-		return schema["properties"];
+	const s = schema as Record<string, unknown>;
+	if (s["type"] === "object" && typeof s["properties"] === "object" && s["properties"] !== null) {
+		return s["properties"] as Record<string, unknown>;
 	}
 
 	return undefined;
@@ -61,8 +60,8 @@ function extractProperties(
 
 /** Returns required field names from a JSON Schema object */
 function extractRequired(schema: unknown): Set<string> {
-	if (!isRecord(schema)) return new Set();
-	const req = schema["required"];
+	if (schema === null || schema === undefined || typeof schema !== "object") return new Set();
+	const req = (schema as Record<string, unknown>)["required"];
 	if (Array.isArray(req)) {
 		const strings = req.filter((s): s is string => typeof s === "string");
 		return new Set(strings);
@@ -103,7 +102,7 @@ export function flattenSchemas(
 		const requiredSet = extractRequired(raw);
 
 		for (const [name, rawProp] of Object.entries(props)) {
-			const prop = isRecord(rawProp) ? rawProp : {};
+			const prop = (typeof rawProp === "object" && rawProp !== null ? rawProp : {}) as Record<string, unknown>;
 
 			// Collision detection
 			const existing = seen.get(name);

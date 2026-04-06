@@ -11,6 +11,8 @@
  * hooks, and all plugins).
  */
 
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion -- Elysia's route.hooks is typed as `any`; we assert known shapes */
+
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import type { Elysia } from "elysia";
@@ -67,11 +69,6 @@ interface McpRequestContext {
 
 const mcpContext = new AsyncLocalStorage<McpRequestContext>();
 
-/** Type guard: returns true when value is a non-null, non-array object */
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && value !== undefined && typeof value === "object" && !Array.isArray(value);
-}
-
 // ─── Route Discovery ─────────────────────────────────────────────────
 
 function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
@@ -79,9 +76,9 @@ function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
 	const routes = app.routes;
 
 	for (const route of routes) {
-		// Elysia's route.hooks is typed as `any`; extract fields safely
-		const hooks: Record<string, unknown> = isRecord(route.hooks) ? route.hooks : {};
-		const detail = isRecord(hooks["detail"]) ? hooks["detail"] : undefined;
+		// Elysia's route.hooks is typed as `any` — cast to Record
+		const hooks = route.hooks as Record<string, unknown>;
+		const detail = hooks["detail"] as Record<string, unknown> | undefined;
 		const mcpValue = detail?.["mcp"];
 
 		// Skip routes that are explicitly opted out
@@ -90,7 +87,9 @@ function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
 		// In opt-in mode, skip routes without `detail.mcp`
 		if (!allRoutes && (mcpValue === undefined || mcpValue === null)) continue;
 
-		const mcpMeta = isRecord(mcpValue) ? mcpValue : undefined;
+		const mcpMeta = typeof mcpValue === "object" && mcpValue !== null
+			? mcpValue as Record<string, unknown>
+			: undefined;
 		const method = route.method.toUpperCase();
 		const routePath = route.path;
 

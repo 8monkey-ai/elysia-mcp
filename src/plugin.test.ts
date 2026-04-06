@@ -1,33 +1,22 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 
 import { Elysia, t } from "elysia";
+import type { ListToolsResult, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 import { mcp } from "./plugin.js";
 
 // ─── MCP response types for test assertions ────────────────────────
 
+/** JSON-RPC envelope wrapping the MCP SDK result types */
 interface McpToolsListResponse {
-	result: {
-		tools: Array<{
-			name: string;
-			description: string;
-			inputSchema: {
-				type: string;
-				properties: Record<string, { description?: string }>;
-				required: string[];
-			};
-		}>;
-	};
+	result: ListToolsResult;
 }
 
 interface McpToolCallResponse {
-	result: {
-		content: Array<{ type: string; text: string }>;
-		isError?: boolean;
-	};
+	result: CallToolResult;
 }
 
-/* eslint-disable @typescript-eslint/no-unsafe-type-assertion -- test assertions use JSON.parse/response.json which return `any` */
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/no-unsafe-argument -- test assertions use JSON.parse/response.json which return `any` */
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
