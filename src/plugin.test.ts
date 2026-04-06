@@ -58,6 +58,31 @@ async function mcpRequest<T = unknown>(
 	return response.json() as T;
 }
 
+function initializeMcp(
+	app: ElysiaApp,
+	headers?: Record<string, string>,
+	path = "/mcp",
+) {
+	return mcpRequest(app, initRequest(), headers, path);
+}
+
+function listTools(
+	app: ElysiaApp,
+	path = "/mcp",
+) {
+	return mcpRequest<McpToolsListResponse>(app, listToolsRequest(), undefined, path);
+}
+
+function callTool(
+	app: ElysiaApp,
+	name: string,
+	args: Record<string, unknown> = {},
+	headers?: Record<string, string>,
+	path = "/mcp",
+) {
+	return mcpRequest<McpToolCallResponse>(app, callToolRequest(name, args), headers, path);
+}
+
 /** MCP initialize request — must be sent before other requests */
 function initRequest() {
 	return {
@@ -214,15 +239,13 @@ describe("MCP Plugin Integration", () => {
 	});
 
 	it("responds to the /mcp endpoint", async () => {
-		const result = await mcpRequest(app, initRequest());
+		const result = await initializeMcp(app);
 		expect(result).toHaveProperty("result");
 	});
 
 	it("lists discovered tools", async () => {
-		// Initialize first
-		await mcpRequest(app, initRequest());
-
-		const result = await mcpRequest<McpToolsListResponse>(app, listToolsRequest());
+		await initializeMcp(app);
+		const result = await listTools(app);
 
 		const toolNames = result.result.tools.map((tool) => tool.name);
 		expect(toolNames).toContain("list_users");
@@ -235,19 +258,16 @@ describe("MCP Plugin Integration", () => {
 	});
 
 	it("does not expose non-MCP routes as tools", async () => {
-		await mcpRequest(app, initRequest());
-		const result = await mcpRequest<McpToolsListResponse>(app, listToolsRequest());
+		await initializeMcp(app);
+		const result = await listTools(app);
 		const toolNames = result.result.tools.map((tool) => tool.name);
 		expect(toolNames).not.toContain("list_health");
 	});
 
 	it("calls a GET tool and returns data", async () => {
 		lifecycleLog.length = 0;
-		await mcpRequest(app, initRequest());
-		const result = await mcpRequest<McpToolCallResponse>(
-			app,
-			callToolRequest("list_users"),
-		);
+		await initializeMcp(app);
+		const result = await callTool(app, "list_users");
 
 		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 		const data = JSON.parse(firstText(result)) as Array<Record<string, unknown>>;
@@ -256,11 +276,8 @@ describe("MCP Plugin Integration", () => {
 	});
 
 	it("calls a GET tool with path parameters", async () => {
-		await mcpRequest(app, initRequest());
-		const result = await mcpRequest<McpToolCallResponse>(
-			app,
-			callToolRequest("get_user", { id: "42" }),
-		);
+		await initializeMcp(app);
+		const result = await callTool(app, "get_user", { id: "42" });
 
 		const data = parseContent(result);
 		expect(data["id"]).toBe("42");
@@ -268,14 +285,11 @@ describe("MCP Plugin Integration", () => {
 	});
 
 	it("calls a POST tool with body", async () => {
-		await mcpRequest(app, initRequest());
-		const result = await mcpRequest<McpToolCallResponse>(
-			app,
-			callToolRequest("create_user", {
-				name: "Charlie",
-				email: "charlie@example.com",
-			}),
-		);
+		await initializeMcp(app);
+		const result = await callTool(app, "create_user", {
+			name: "Charlie",
+			email: "charlie@example.com",
+		});
 
 		const data = parseContent(result);
 		expect(data["name"]).toBe("Charlie");
@@ -283,11 +297,8 @@ describe("MCP Plugin Integration", () => {
 	});
 
 	it("calls a PATCH tool with params and body", async () => {
-		await mcpRequest(app, initRequest());
-		const result = await mcpRequest<McpToolCallResponse>(
-			app,
-			callToolRequest("update_user", { id: "42", name: "Updated" }),
-		);
+		await initializeMcp(app);
+		const result = await callTool(app, "update_user", { id: "42", name: "Updated" });
 
 		const data = parseContent(result);
 		expect(data["id"]).toBe("42");
@@ -296,10 +307,10 @@ describe("MCP Plugin Integration", () => {
 
 	it("executes the full Elysia lifecycle (derive, beforeHandle, afterHandle)", async () => {
 		lifecycleLog.length = 0;
-		await mcpRequest(app, initRequest());
+		await initializeMcp(app);
 
 		lifecycleLog.length = 0;
-		await mcpRequest(app, callToolRequest("list_whoami"));
+		await callTool(app, "list_whoami");
 
 		// The lifecycle should have been executed for the synthetic request
 		// derive → beforeHandle → handler → afterHandle
@@ -310,22 +321,16 @@ describe("MCP Plugin Integration", () => {
 	});
 
 	it("provides derived context to handlers via app.handle()", async () => {
-		await mcpRequest(app, initRequest());
-		const result = await mcpRequest<McpToolCallResponse>(
-			app,
-			callToolRequest("list_whoami"),
-		);
+		await initializeMcp(app);
+		const result = await callTool(app, "list_whoami");
 
 		const data = parseContent(result);
 		expect(data["requestId"]).toBe("req-123");
 	});
 
 	it("returns an error for unknown tools", async () => {
-		await mcpRequest(app, initRequest());
-		const result = await mcpRequest<McpToolCallResponse>(
-			app,
-			callToolRequest("nonexistent_tool"),
-		);
+		await initializeMcp(app);
+		const result = await callTool(app, "nonexistent_tool");
 
 		expect(result.result.isError).toBe(true);
 		expect(firstText(result)).toContain("Unknown tool");
@@ -341,24 +346,24 @@ describe("MCP Plugin Integration", () => {
 	});
 
 	it("preserves tool descriptions from detail.summary", async () => {
-		await mcpRequest(app, initRequest());
-		const result = await mcpRequest<McpToolsListResponse>(app, listToolsRequest());
+		await initializeMcp(app);
+		const result = await listTools(app);
 
 		const listUsers = result.result.tools.find((tool) => tool.name === "list_users");
 		expect(listUsers?.description).toBe("List all users");
 	});
 
 	it("uses explicit mcp description when provided", async () => {
-		await mcpRequest(app, initRequest());
-		const result = await mcpRequest<McpToolsListResponse>(app, listToolsRequest());
+		await initializeMcp(app);
+		const result = await listTools(app);
 
 		const getUser = result.result.tools.find((tool) => tool.name === "get_user");
 		expect(getUser?.description).toBe("Retrieve a single user");
 	});
 
 	it("includes input schema with property descriptions", async () => {
-		await mcpRequest(app, initRequest());
-		const result = await mcpRequest<McpToolsListResponse>(app, listToolsRequest());
+		await initializeMcp(app);
+		const result = await listTools(app);
 
 		const getUser = result.result.tools.find((tool) => tool.name === "get_user");
 		expect(getUser?.inputSchema.type).toBe("object");
@@ -378,8 +383,8 @@ describe("MCP Plugin allRoutes option", () => {
 			.use(mcp({ name: "test" }));
 
 		await app.handle(new Request("http://localhost/health"));
-		await mcpRequest(app, initRequest());
-		const result = await mcpRequest<McpToolsListResponse>(app, listToolsRequest());
+		await initializeMcp(app);
+		const result = await listTools(app);
 		const toolNames = result.result.tools.map((tool) => tool.name);
 		expect(toolNames).toContain("list_users");
 		expect(toolNames).toContain("list_items");
@@ -393,8 +398,8 @@ describe("MCP Plugin allRoutes option", () => {
 			.use(mcp({ name: "test", allRoutes: false }));
 
 		await app.handle(new Request("http://localhost/items"));
-		await mcpRequest(app, initRequest());
-		const result = await mcpRequest<McpToolsListResponse>(app, listToolsRequest());
+		await initializeMcp(app);
+		const result = await listTools(app);
 		const toolNames = result.result.tools.map((tool) => tool.name);
 		expect(toolNames).toContain("list_users");
 		expect(toolNames).not.toContain("list_items");
@@ -410,7 +415,7 @@ describe("MCP Plugin Configuration", () => {
 			.use(mcp({ path: "/custom-mcp" }));
 
 		// Should work on custom path
-		const result = await mcpRequest(app, initRequest(), {}, "/custom-mcp");
+		const result = await initializeMcp(app, undefined, "/custom-mcp");
 		expect(result).toHaveProperty("result");
 	});
 
@@ -452,10 +457,10 @@ describe("MCP Plugin Lifecycle Verification", () => {
 		await app.handle(new Request("http://localhost/health"));
 
 		log.length = 0;
-		await mcpRequest(app, initRequest());
+		await initializeMcp(app);
 
 		log.length = 0;
-		await mcpRequest(app, callToolRequest("list_items"));
+		await callTool(app, "list_items");
 
 		// Should see beforeHandle for /mcp (the MCP endpoint itself)
 		// AND for /items (the original route via app.handle())
@@ -478,9 +483,9 @@ describe("MCP Plugin Lifecycle Verification", () => {
 
 		await app.handle(new Request("http://localhost/health"));
 
-		await mcpRequest(app, initRequest());
+		await initializeMcp(app);
 
-		const result = await mcpRequest<McpToolCallResponse>(app, callToolRequest("list_magic"));
+		const result = await callTool(app, "list_magic");
 
 		const data = parseContent(result);
 		expect(data["value"]).toBe(42);
@@ -505,12 +510,13 @@ describe("MCP Plugin Lifecycle Verification", () => {
 		await app.handle(new Request("http://localhost/health"));
 
 		// Initialize
-		await mcpRequest(app, initRequest(), { authorization: "Bearer test-token" });
+		await initializeMcp(app, { authorization: "Bearer test-token" });
 
 		// Call tool with auth header
-		const result = await mcpRequest<McpToolCallResponse>(
+		const result = await callTool(
 			app,
-			callToolRequest("list_protected"),
+			"list_protected",
+			{},
 			{ authorization: "Bearer test-token" },
 		);
 
