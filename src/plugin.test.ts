@@ -16,11 +16,29 @@ interface McpToolCallResponse {
 	result: CallToolResult;
 }
 
+/** Extract the text from the first MCP content item (narrowing the union). */
+function firstText(result: McpToolCallResponse): string {
+	const item = result.result.content[0];
+	if (item?.type !== "text") throw new Error("Expected text content");
+	return item.text;
+}
+
+/** Parse the first MCP content item as JSON and return a Record. */
+function parseContent(result: McpToolCallResponse): Record<string, unknown> {
+	// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+	return JSON.parse(firstText(result)) as Record<string, unknown>;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────
+
+/** Minimal interface for the Elysia app used in tests */
+interface ElysiaApp {
+	handle(request: Request): Response | Promise<Response>;
+}
 
 /** Send a JSON-RPC request to the MCP endpoint and parse the JSON response */
 async function mcpRequest<T = unknown>(
-	app: Elysia,
+	app: ElysiaApp,
 	body: unknown,
 	headers?: Record<string, string>,
 	path = "/mcp",
@@ -163,7 +181,7 @@ function createTestApp() {
 			(ctx) => {
 				lifecycleLog.push("handler");
 				// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-				return { requestId: (ctx as unknown as Record<string, unknown>).requestId };
+				return { requestId: (ctx as unknown as Record<string, unknown>)["requestId"] };
 			},
 			{
 				detail: { summary: "Get request info (tests derive)", mcp: true },
@@ -182,7 +200,7 @@ function createTestApp() {
 // ─── Tests ───────────────────────────────────────────────────────────
 
 describe("MCP Plugin Integration", () => {
-	let app: Elysia;
+	let app: ElysiaApp;
 	let lifecycleLog: string[];
 
 	beforeAll(async () => {
@@ -231,11 +249,10 @@ describe("MCP Plugin Integration", () => {
 			callToolRequest("list_users"),
 		);
 
-		expect(result.result.content[0]?.type).toBe("text");
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/no-unsafe-argument
-		const data = JSON.parse(result.result.content[0]!.text) as Array<Record<string, unknown>>;
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+		const data = JSON.parse(firstText(result)) as Array<Record<string, unknown>>;
 		expect(data).toHaveLength(2);
-		expect(data[0].name).toBe("Alice");
+		expect(data[0]?.["name"]).toBe("Alice");
 	});
 
 	it("calls a GET tool with path parameters", async () => {
@@ -245,10 +262,9 @@ describe("MCP Plugin Integration", () => {
 			callToolRequest("get_user", { id: "42" }),
 		);
 
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/no-unsafe-argument
-		const data = JSON.parse(result.result.content[0]!.text) as Record<string, unknown>;
-		expect(data.id).toBe("42");
-		expect(data.name).toBe("Alice");
+		const data = parseContent(result);
+		expect(data["id"]).toBe("42");
+		expect(data["name"]).toBe("Alice");
 	});
 
 	it("calls a POST tool with body", async () => {
@@ -261,10 +277,9 @@ describe("MCP Plugin Integration", () => {
 			}),
 		);
 
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/no-unsafe-argument
-		const data = JSON.parse(result.result.content[0]!.text) as Record<string, unknown>;
-		expect(data.name).toBe("Charlie");
-		expect(data.email).toBe("charlie@example.com");
+		const data = parseContent(result);
+		expect(data["name"]).toBe("Charlie");
+		expect(data["email"]).toBe("charlie@example.com");
 	});
 
 	it("calls a PATCH tool with params and body", async () => {
@@ -274,10 +289,9 @@ describe("MCP Plugin Integration", () => {
 			callToolRequest("update_user", { id: "42", name: "Updated" }),
 		);
 
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/no-unsafe-argument
-		const data = JSON.parse(result.result.content[0]!.text) as Record<string, unknown>;
-		expect(data.id).toBe("42");
-		expect(data.name).toBe("Updated");
+		const data = parseContent(result);
+		expect(data["id"]).toBe("42");
+		expect(data["name"]).toBe("Updated");
 	});
 
 	it("executes the full Elysia lifecycle (derive, beforeHandle, afterHandle)", async () => {
@@ -302,9 +316,8 @@ describe("MCP Plugin Integration", () => {
 			callToolRequest("list_whoami"),
 		);
 
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/no-unsafe-argument
-		const data = JSON.parse(result.result.content[0]!.text) as Record<string, unknown>;
-		expect(data.requestId).toBe("req-123");
+		const data = parseContent(result);
+		expect(data["requestId"]).toBe("req-123");
 	});
 
 	it("returns an error for unknown tools", async () => {
@@ -315,7 +328,7 @@ describe("MCP Plugin Integration", () => {
 		);
 
 		expect(result.result.isError).toBe(true);
-		expect(result.result.content[0]?.text).toContain("Unknown tool");
+		expect(firstText(result)).toContain("Unknown tool");
 	});
 
 	it("does not interfere with regular REST endpoints", async () => {
@@ -349,7 +362,9 @@ describe("MCP Plugin Integration", () => {
 
 		const getUser = result.result.tools.find((tool) => tool.name === "get_user");
 		expect(getUser?.inputSchema.type).toBe("object");
-		expect(getUser?.inputSchema.properties["id"]?.description).toBe("The user ID");
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+		const props = getUser?.inputSchema.properties as Record<string, { description?: string }> | undefined;
+		expect(props?.["id"]?.description).toBe("The user ID");
 		expect(getUser?.inputSchema.required).toContain("id");
 	});
 });
@@ -454,7 +469,7 @@ describe("MCP Plugin Lifecycle Verification", () => {
 			.get(
 				"/magic",
 				// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-			(ctx) => ({ value: (ctx as unknown as Record<string, unknown>).magic }),
+			(ctx) => ({ value: (ctx as unknown as Record<string, unknown>)["magic"] }),
 				{
 					detail: { mcp: true },
 				},
@@ -467,9 +482,8 @@ describe("MCP Plugin Lifecycle Verification", () => {
 
 		const result = await mcpRequest<McpToolCallResponse>(app, callToolRequest("list_magic"));
 
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/no-unsafe-argument
-		const data = JSON.parse(result.result.content[0]!.text) as Record<string, unknown>;
-		expect(data.value).toBe(42);
+		const data = parseContent(result);
+		expect(data["value"]).toBe(42);
 	});
 
 	it("forwards headers from MCP request to tool handler (auth propagation)", async () => {
@@ -500,8 +514,7 @@ describe("MCP Plugin Lifecycle Verification", () => {
 			{ authorization: "Bearer test-token" },
 		);
 
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/no-unsafe-argument
-		const data = JSON.parse(result.result.content[0]!.text) as Record<string, unknown>;
-		expect(data.auth).toBe("Bearer test-token");
+		const data = parseContent(result);
+		expect(data["auth"]).toBe("Bearer test-token");
 	});
 });

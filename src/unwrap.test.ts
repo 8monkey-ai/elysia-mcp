@@ -12,7 +12,8 @@ describe("unwrapStatus", () => {
 		expect(unwrapStatus("hello")).toBe("hello");
 		expect(unwrapStatus(42)).toBe(42);
 		expect(unwrapStatus(null)).toBe(null);
-		expect(unwrapStatus()).toBe(undefined);
+		// eslint-disable-next-line unicorn/no-useless-undefined
+		expect(unwrapStatus(undefined)).toBe(undefined);
 	});
 
 	it("unwraps Elysia status() responses", () => {

@@ -15,6 +15,14 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 import type { Elysia } from "elysia";
 
+// ─── Module Augmentation ────────────────────────────────────────────
+// Extend Elysia's DocumentDecoration so `detail: { mcp: ... }` is type-safe.
+declare module "elysia" {
+	interface DocumentDecoration {
+		mcp?: boolean | McpToolMeta;
+	}
+}
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
 	CallToolRequestSchema,
