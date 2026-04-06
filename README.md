@@ -32,7 +32,7 @@ Compared to [kerlos/elysia-mcp](https://github.com/kerlos/elysia-mcp) and [keith
 bun add @8monkey/elysia-mcp
 ```
 
-Peer dependency: `elysia >= 1.0.0`
+Peer dependency: `elysia >= 1.4.0`
 
 ## Basic usage
 
@@ -173,7 +173,3 @@ Or configure it in Claude Desktop, Cursor, or any other MCP-enabled tool as an H
 - **Plugin order matters**: `.use(mcp())` must come after all MCP-eligible routes, since route discovery happens at mount time. This is the same pattern as other Elysia plugins (e.g., `derive` must precede routes that use it).
 - **Tools only (v1)**: This plugin exposes MCP tools. Resources and prompts are not supported yet.
 - **Stateless transport**: Each request gets its own transport instance — no session tracking or SSE connections to manage.
-
-## License
-
-MIT
