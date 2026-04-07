@@ -67,7 +67,11 @@ type RouteHooks = {
   response?: unknown;
 };
 
-function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
+function discoverTools(
+  app: Elysia,
+  allRoutes: boolean,
+  warn: (msg: string) => void,
+): DiscoveredTool[] {
   const tools: DiscoveredTool[] = [];
 
   for (const route of app.routes) {
@@ -97,14 +101,14 @@ function discoverTools(app: Elysia, allRoutes: boolean): DiscoveredTool[] {
     });
 
     for (const warning of flatten.warnings) {
-      console.warn(warning);
+      warn(warning);
     }
 
     // Extract response schema for MCP outputSchema (must be type: "object")
     const outputSchema = cleanResponseSchema(asSchemaLike(hooks.response));
 
     if (hooks.response !== undefined && hooks.response !== null && outputSchema === undefined) {
-      console.warn(
+      warn(
         `[mcp] Tool "${name}": response schema is not type: "object" — outputSchema omitted (structuredContent unavailable)`,
       );
     }
@@ -250,9 +254,6 @@ function createMcpServer(
  * By default all routes are exposed as MCP tools. Set `allRoutes: false`
  * to require explicit opt-in via `detail: { mcp: true }`, or opt out
  * individual routes with `detail: { mcp: false }`.
- *
- * **Important:** `.use(mcp())` must come after all MCP-eligible routes are
- * registered, as route discovery happens at plugin mount time.
  */
 export function mcp(options: McpPluginOptions = {}) {
   const { name = "elysia-mcp", version = "1.0.0", path = "/mcp", allRoutes = true } = options;
@@ -261,34 +262,54 @@ export function mcp(options: McpPluginOptions = {}) {
   // This gives us access to app.routes (for discovery) and app.handle() (for
   // tool invocation through the full lifecycle).
   return (app: Elysia) => {
-    const tools = discoverTools(app, allRoutes);
-
-    // Build a Map for O(1) tool lookup by name
-    const toolMap = new Map<string, DiscoveredTool>();
-    for (const tool of tools) {
-      if (toolMap.has(tool.name)) {
-        console.warn(`[mcp] Duplicate tool name "${tool.name}" — later route will override`);
-      }
-      toolMap.set(tool.name, tool);
-    }
-    const toolListResponse = {
-      tools: Array.from(toolMap.values(), (tool) => ({
-        name: tool.name,
-        description: tool.description,
-        inputSchema: tool.flatten.schema,
-        ...(tool.outputSchema === undefined ? {} : { outputSchema: tool.outputSchema }),
-      })),
+    // Cache invalidated whenever the route count changes (same strategy as elysia-openapi).
+    const emitted = new Set<string>();
+    const warn = (msg: string): void => {
+      if (emitted.has(msg)) return;
+      emitted.add(msg);
+      console.warn(msg);
     };
+    let cachedRouteCount = -1;
 
-    if (tools.length === 0) {
-      console.warn("[mcp] No MCP-eligible routes found — MCP server will have no tools");
-    } else {
-      console.info(
-        `[mcp] Discovered ${tools.length} tool(s): ${tools.map((t) => t.name).join(", ")}`,
-      );
+    let toolMap = new Map<string, DiscoveredTool>();
+    let toolListResponse: {
+      tools: Array<{
+        name: string;
+        description: string;
+        inputSchema: FlattenResult["schema"];
+      }>;
+    } = { tools: [] };
+
+    function refreshTools() {
+      if (app.routes.length === cachedRouteCount) return;
+      cachedRouteCount = app.routes.length;
+
+      const tools = discoverTools(app, allRoutes, warn);
+      
+      toolMap = new Map<string, DiscoveredTool>();
+      for (const tool of tools) {
+        if (toolMap.has(tool.name)) {
+          warn(`[mcp] Duplicate tool name "${tool.name}" — later route will override`);
+        }
+        toolMap.set(tool.name, tool);
+      }
+      toolListResponse = {
+        tools: Array.from(toolMap.values(), (tool) => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.flatten.schema,
+          ...(tool.outputSchema === undefined ? {} : { outputSchema: tool.outputSchema }),
+        })),
+      };
+
+      if (tools.length === 0) {
+        warn("[mcp] No MCP-eligible routes found — MCP server will have no tools");
+      }
     }
 
     return app.post(path, async ({ request, body }: { request: Request; body: unknown }) => {
+      refreshTools();
+
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,

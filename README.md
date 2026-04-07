@@ -36,17 +36,17 @@ Peer dependency: `elysia >= 1.4.0`
 
 ## Basic usage
 
-Add `.use(mcp())` after your routes — that's it. All routes become MCP tools:
+Add `.use(mcp())` and all routes become MCP tools:
 
 ```typescript
 import { Elysia } from "elysia";
 import { mcp } from "@8monkey/elysia-mcp";
 
 const app = new Elysia()
+  .use(mcp())
   .get("/users", () => db.users.findAll())
   .get("/users/:id", ({ params }) => db.users.find(params.id))
   .post("/users", ({ body }) => db.users.create(body))
-  .use(mcp())
   .listen(3000);
 ```
 
@@ -112,11 +112,11 @@ By default, all routes are exposed. Opt out individual routes with `mcp: false`:
 Or flip the default — set `allRoutes: false` to require explicit opt-in:
 
 ```typescript
+.use(mcp({ allRoutes: false }))
 .get("/users", () => db.users.findAll(), {
   detail: { mcp: true },  // only this route becomes a tool
 })
 .get("/health", () => "ok")  // not exposed
-.use(mcp({ allRoutes: false }))
 ```
 
 ## Overriding tool names and descriptions
@@ -178,6 +178,5 @@ Or configure it in Claude Desktop, Cursor, or any other MCP-enabled tool as an H
 
 ## Important notes
 
-- **Plugin order matters**: `.use(mcp())` must come after all MCP-eligible routes, since route discovery happens at mount time. This is the same pattern as other Elysia plugins (e.g., `derive` must precede routes that use it).
 - **Tools only (v1)**: This plugin exposes MCP tools. Resources and prompts are not supported yet.
 - **Stateless transport**: Each request gets its own transport instance — no session tracking or SSE connections to manage.
