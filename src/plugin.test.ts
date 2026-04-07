@@ -938,6 +938,82 @@ describe("MCP Plugin with Zod schemas", () => {
   });
 });
 
+describe("MCP Plugin non-object body schema handling", () => {
+  it("skips routes with array body schemas and warns", async () => {
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(String(args[0]));
+    };
+    try {
+      const app = new Elysia()
+        .post("/batch", ({ body }) => ({ received: body }), {
+          body: t.Array(t.Object({ id: t.Number() })),
+          detail: { operationId: "batch_create", mcp: true },
+        })
+        .use(mcp({ name: "test" }));
+
+      await initializeMcp(app);
+      const result = await listTools(app);
+
+      const toolNames = result.result.tools.map((tool) => tool.name);
+      expect(toolNames).not.toContain("batch_create");
+      expect(warnings.some((w) => w.includes("batch_create") && w.includes("route skipped"))).toBe(
+        true,
+      );
+    } finally {
+      console.warn = origWarn;
+    }
+  });
+
+  it("skips routes with string body schemas and warns", async () => {
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(String(args[0]));
+    };
+    try {
+      const app = new Elysia()
+        .post("/echo", ({ body }) => ({ received: body }), {
+          body: t.String(),
+          detail: { operationId: "echo_string", mcp: true },
+        })
+        .use(mcp({ name: "test" }));
+
+      await initializeMcp(app);
+      const result = await listTools(app);
+
+      const toolNames = result.result.tools.map((tool) => tool.name);
+      expect(toolNames).not.toContain("echo_string");
+      expect(warnings.some((w) => w.includes("echo_string") && w.includes("route skipped"))).toBe(
+        true,
+      );
+    } finally {
+      console.warn = origWarn;
+    }
+  });
+
+  it("still publishes sibling routes with object body schemas", async () => {
+    const app = new Elysia()
+      .post("/batch", ({ body }) => ({ received: body }), {
+        body: t.Array(t.Object({ id: t.Number() })),
+        detail: { operationId: "batch_create", mcp: true },
+      })
+      .post("/users", ({ body }) => ({ ...body }), {
+        body: t.Object({ name: t.String({ description: "Name" }) }),
+        detail: { operationId: "create_user_obj", mcp: true },
+      })
+      .use(mcp({ name: "test" }));
+
+    await initializeMcp(app);
+    const result = await listTools(app);
+
+    const toolNames = result.result.tools.map((tool) => tool.name);
+    expect(toolNames).not.toContain("batch_create");
+    expect(toolNames).toContain("create_user_obj");
+  });
+});
+
 describe("MCP Plugin with mixed TypeBox and Zod schemas", () => {
   it("discovers tools from both TypeBox and Zod routes", async () => {
     const app = new Elysia()

@@ -94,10 +94,22 @@ function discoverTools(
     const pathSegments = routePath.split("/");
     const description = detail?.summary ?? `${method} ${routePath}`;
 
+    const bodySchema = method !== "GET" && method !== "HEAD" ? asSchemaLike(hooks.body) : undefined;
+
+    // Non-object body schemas (arrays, primitives) cannot be flattened into MCP
+    // tool arguments — unflattenArgs() would return body: undefined, silently
+    // dropping the body from the synthetic request. Skip and warn instead.
+    if (bodySchema !== undefined && bodySchema !== null && bodySchema["type"] !== "object") {
+      warn(
+        `[mcp] Tool "${name}": body schema type "${String(bodySchema["type"])}" cannot be represented as MCP tool arguments — route skipped`,
+      );
+      continue;
+    }
+
     const flatten = flattenSchemas(name, {
       params: asSchemaLike(hooks.params),
       query: asSchemaLike(hooks.query),
-      body: method !== "GET" && method !== "HEAD" ? asSchemaLike(hooks.body) : undefined,
+      body: bodySchema,
     });
 
     for (const warning of flatten.warnings) {
@@ -307,26 +319,30 @@ export function mcp(options: McpPluginOptions = {}) {
       }
     }
 
-    return app.post(path, async ({ request, body }: { request: Request; body: unknown }) => {
-      refreshTools();
+    return app.post(
+      path,
+      async ({ request, body }: { request: Request; body: unknown }) => {
+        refreshTools();
 
-      const transport = new WebStandardStreamableHTTPServerTransport({
-        sessionIdGenerator: undefined,
-        enableJsonResponse: true,
-      });
-
-      // Create a fresh McpServer per request — the MCP SDK's
-      // Protocol.connect() throws if the server is already connected,
-      // so reusing a single instance across concurrent requests would fail.
-      const server = createMcpServer(name, version, toolMap, toolListResponse, app, request);
-      await server.connect(transport);
-      try {
-        return await transport.handleRequest(request, {
-          parsedBody: body,
+        const transport = new WebStandardStreamableHTTPServerTransport({
+          sessionIdGenerator: undefined,
+          enableJsonResponse: true,
         });
-      } finally {
-        await transport.close();
-      }
-    });
+
+        // Create a fresh McpServer per request — the MCP SDK's
+        // Protocol.connect() throws if the server is already connected,
+        // so reusing a single instance across concurrent requests would fail.
+        const server = createMcpServer(name, version, toolMap, toolListResponse, app, request);
+        await server.connect(transport);
+        try {
+          return await transport.handleRequest(request, {
+            parsedBody: body,
+          });
+        } finally {
+          await transport.close();
+        }
+      },
+      { detail: { mcp: false } },
+    );
   };
 }
