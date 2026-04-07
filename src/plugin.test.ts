@@ -548,39 +548,41 @@ describe("MCP Plugin outputSchema", () => {
     expect(outputSchema).toBeUndefined();
   });
 
-  it("warns when response schema is not type:object", () => {
+  it("warns when response schema is not type:object", async () => {
     const warnings: string[] = [];
     const origWarn = console.warn;
     console.warn = (...args: unknown[]) => {
       warnings.push(String(args[0]));
     };
     try {
-      new Elysia()
+      const app = new Elysia()
         .get("/users", () => [{ id: 1 }], {
           response: t.Array(t.Object({ id: t.Number() })),
           detail: { mcp: true },
         })
         .use(mcp({ name: "test" }));
 
+      await initializeMcp(app);
       expect(warnings.some((w) => w.includes("outputSchema omitted"))).toBe(true);
     } finally {
       console.warn = origWarn;
     }
   });
 
-  it("does not warn when no response schema is defined", () => {
+  it("does not warn when no response schema is defined", async () => {
     const warnings: string[] = [];
     const origWarn = console.warn;
     console.warn = (...args: unknown[]) => {
       warnings.push(String(args[0]));
     };
     try {
-      new Elysia()
+      const app = new Elysia()
         .get("/items", () => [{ id: 1 }], {
           detail: { mcp: true },
         })
         .use(mcp({ name: "test" }));
 
+      await initializeMcp(app);
       expect(warnings.some((w) => w.includes("outputSchema omitted"))).toBe(false);
     } finally {
       console.warn = origWarn;
@@ -784,42 +786,30 @@ describe("MCP Plugin with Zod schemas", () => {
           detail: { summary: "List products", mcp: true },
         },
       )
-      .get(
-        "/products/:id",
-        ({ params }) => ({ id: params["id"], name: "Widget", price: 9.99 }),
-        {
-          params: z.object({ id: z.string().describe("Product ID") }),
-          response: z.object({
-            id: z.string().describe("Product ID"),
-            name: z.string().describe("Product name"),
-            price: z.number().describe("Price in USD"),
-          }),
-          detail: { operationId: "get_product", summary: "Get product by ID", mcp: true },
-        },
-      )
-      .post(
-        "/products",
-        ({ body }) => ({ id: 3, ...body }),
-        {
-          body: z.object({
-            name: z.string().describe("Product name"),
-            price: z.number().describe("Price in USD"),
-          }),
-          detail: { summary: "Create a product", mcp: true },
-        },
-      )
-      .patch(
-        "/products/:id",
-        ({ params, body }) => ({ id: params["id"], ...body }),
-        {
-          params: z.object({ id: z.string().describe("Product ID") }),
-          body: z.object({
-            name: z.string().optional().describe("Updated name"),
-            price: z.number().optional().describe("Updated price"),
-          }),
-          detail: { summary: "Update a product", mcp: true },
-        },
-      )
+      .get("/products/:id", ({ params }) => ({ id: params["id"], name: "Widget", price: 9.99 }), {
+        params: z.object({ id: z.string().describe("Product ID") }),
+        response: z.object({
+          id: z.string().describe("Product ID"),
+          name: z.string().describe("Product name"),
+          price: z.number().describe("Price in USD"),
+        }),
+        detail: { operationId: "get_product", summary: "Get product by ID", mcp: true },
+      })
+      .post("/products", ({ body }) => ({ id: 3, ...body }), {
+        body: z.object({
+          name: z.string().describe("Product name"),
+          price: z.number().describe("Price in USD"),
+        }),
+        detail: { summary: "Create a product", mcp: true },
+      })
+      .patch("/products/:id", ({ params, body }) => ({ id: params["id"], ...body }), {
+        params: z.object({ id: z.string().describe("Product ID") }),
+        body: z.object({
+          name: z.string().optional().describe("Updated name"),
+          price: z.number().optional().describe("Updated price"),
+        }),
+        detail: { summary: "Update a product", mcp: true },
+      })
       .use(mcp({ name: "zod-test-api", version: "0.1.0" }));
 
     await app.handle(new Request("http://localhost/health"));

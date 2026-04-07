@@ -240,7 +240,7 @@ function createMcpServer(
       };
     }
 
-    return result;
+    return { content: result.content };
   });
 
   return mcpServer;
@@ -285,7 +285,7 @@ export function mcp(options: McpPluginOptions = {}) {
       cachedRouteCount = app.routes.length;
 
       const tools = discoverTools(app, allRoutes, warn);
-      
+
       toolMap = new Map<string, DiscoveredTool>();
       for (const tool of tools) {
         if (toolMap.has(tool.name)) {
