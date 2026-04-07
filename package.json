@@ -46,6 +46,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "devDependencies": {
+    "@elysiajs/cors": "^1.4.1",
     "@sinclair/typebox": "^0.34.49",
     "@types/bun": "^1.2.18",
     "oxfmt": "^0.43.0",
