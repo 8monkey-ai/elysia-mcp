@@ -97,7 +97,7 @@ function discoverTools(
     const flatten = flattenSchemas(name, {
       params: asSchemaLike(hooks.params),
       query: asSchemaLike(hooks.query),
-      body: asSchemaLike(hooks.body),
+      body: method !== "GET" && method !== "HEAD" ? asSchemaLike(hooks.body) : undefined,
     });
 
     for (const warning of flatten.warnings) {

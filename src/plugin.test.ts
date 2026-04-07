@@ -542,6 +542,7 @@ describe("MCP Plugin outputSchema", () => {
     const result = await listTools(app);
 
     const found = result.result.tools.find((entry) => entry.name === "list_users");
+    expect(found).toBeDefined();
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const outputSchema = (found as Record<string, unknown>)["outputSchema"];
     expect(outputSchema).toBeUndefined();
@@ -598,6 +599,7 @@ describe("MCP Plugin outputSchema", () => {
     const result = await listTools(app);
 
     const found = result.result.tools.find((entry) => entry.name === "list_items");
+    expect(found).toBeDefined();
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const outputSchema = (found as Record<string, unknown>)["outputSchema"];
     expect(outputSchema).toBeUndefined();
