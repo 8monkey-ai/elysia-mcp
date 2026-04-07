@@ -195,10 +195,6 @@ export function flattenSchemas(
 }
 
 /**
- * Unflatten a flat args object back into { params, query, body } based on
- * the property origins from flattenSchemas.
- */
-/**
  * Extract and clean a response schema for use as an MCP `outputSchema`.
  *
  * MCP requires `outputSchema` to have `type: "object"` at the root.
@@ -255,6 +251,10 @@ function stripInternalKeys(schema: Record<string, unknown>): FlatJsonSchema {
   return { type: "object", properties, required };
 }
 
+/**
+ * Unflatten a flat args object back into { params, query, body } based on
+ * the property origins from flattenSchemas.
+ */
 export function unflattenArgs(
   args: JsonObject,
   flatten: FlattenResult,

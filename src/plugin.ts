@@ -89,35 +89,46 @@ function discoverTools(
     if (!allRoutes && (mcpEnabled === undefined || mcpEnabled === null)) continue;
 
     const method = route.method.toUpperCase();
+
+    // OPTIONS and HEAD have no semantic value as MCP tools
+    if (method === "OPTIONS" || method === "HEAD") continue;
+
     const routePath = route.path;
     const name = detail?.operationId ?? deriveToolName(method, routePath);
     const pathSegments = routePath.split("/");
     const description = detail?.summary ?? `${method} ${routePath}`;
 
-    const bodySchema = method !== "GET" && method !== "HEAD" ? asSchemaLike(hooks.body) : undefined;
+    let flatten: FlattenResult;
+    let outputSchema: FlatJsonSchema | undefined;
 
-    // Non-object body schemas (arrays, primitives) cannot be flattened into MCP
-    // tool arguments — unflattenArgs() would return body: undefined, silently
-    // dropping the body from the synthetic request. Skip and warn instead.
-    if (bodySchema !== undefined && bodySchema !== null && bodySchema["type"] !== "object") {
-      warn(
-        `[mcp] Tool "${name}": body schema type "${String(bodySchema["type"])}" cannot be represented as MCP tool arguments — route skipped`,
-      );
+    try {
+      const bodySchema = method === "GET" ? undefined : asSchemaLike(hooks.body);
+
+      // Non-object body schemas (arrays, primitives) cannot be flattened into MCP
+      // tool arguments — unflattenArgs() would return body: undefined, silently
+      // dropping the body from the synthetic request. Skip and warn instead.
+      if (bodySchema !== undefined && bodySchema !== null && bodySchema["type"] !== "object") {
+        warn(
+          `[mcp] Tool "${name}": body schema type "${String(bodySchema["type"])}" cannot be represented as MCP tool arguments — route skipped`,
+        );
+        continue;
+      }
+
+      flatten = flattenSchemas(name, {
+        params: asSchemaLike(hooks.params),
+        query: asSchemaLike(hooks.query),
+        body: bodySchema,
+      });
+
+      outputSchema = cleanResponseSchema(asSchemaLike(hooks.response));
+    } catch (err) {
+      warn(`[mcp] Route "${method} ${routePath}" skipped — schema conversion failed: ${String(err)}`);
       continue;
     }
-
-    const flatten = flattenSchemas(name, {
-      params: asSchemaLike(hooks.params),
-      query: asSchemaLike(hooks.query),
-      body: bodySchema,
-    });
 
     for (const warning of flatten.warnings) {
       warn(warning);
     }
-
-    // Extract response schema for MCP outputSchema (must be type: "object")
-    const outputSchema = cleanResponseSchema(asSchemaLike(hooks.response));
 
     if (hooks.response !== undefined && hooks.response !== null && outputSchema === undefined) {
       warn(
