@@ -1,19 +1,18 @@
 # @8monkey/elysia-mcp
 
-Turn your existing Elysia routes into MCP tools — no manual registration, no schema duplication, no handler rewrites.
+Turn your existing Elysia routes into MCP tools. No manual registration, no schema duplication, no handler rewrites.
 
 ## Why?
 
 The [Model Context Protocol](https://modelcontextprotocol.io/) lets AI agents discover and call tools over a standard JSON-RPC interface. If you already have an Elysia API with typed schemas and handlers, you shouldn't have to rewrite all of that as MCP tool definitions.
 
-`@8monkey/elysia-mcp` bridges the gap: add `.use(mcp())` and every endpoint becomes a callable MCP tool — with its name, description, and input schema derived from what you already wrote.
+`@8monkey/elysia-mcp` bridges the gap: add `.use(mcp())` and every endpoint becomes a callable MCP tool, with its name, description, and input schema derived from what you already wrote.
 
 ## Key highlights
 
-- 🔄 **Zero duplication** — tool names, descriptions, and input schemas are derived from your existing route definitions. OpenAPI metadata such as `detail.operationId` and `detail.summary` also drive MCP tool discovery — write once, serve both humans and AI agents
-- 🔌 **Any schema library** — works with TypeBox, Zod, Valibot, or any validation library supported by Elysia via [Standard Schema](https://github.com/standard-schema/standard-schema)
-- ⚡ **Full lifecycle** — MCP tool calls go through `app.handle()`, so derive, resolve, beforeHandle, afterHandle, error hooks, and all plugins run exactly as they do for normal HTTP requests
-- 🔑 **Header forwarding** — auth tokens, cookies, and other headers from the MCP request are forwarded to tool invocations, so your existing auth middleware works without changes
+- 🔄 **Zero duplication** — tool names, descriptions, and input schemas are derived from your existing route definitions. OpenAPI metadata such as `detail.operationId` and `detail.summary` also drive MCP tool discovery. Write once, serve both humans and AI agents.
+- 🔌 **Any schema library** — works with TypeBox, Zod, Valibot, or any validation library supported by Elysia via [Standard Schema](https://github.com/standard-schema/standard-schema).
+- ⚡ **Full lifecycle** — MCP tool calls go through `app.handle()`, so derive, resolve, beforeHandle, afterHandle, error hooks, and all plugins run exactly as they do for normal HTTP requests.
 - 📋 **Schema flattening** — params, query, and body schemas are merged into a single flat MCP input schema with property origins tracked for correct unflattening
 - 🏷️ **Smart naming** — `GET /users` becomes `list_users`, `GET /users/:id` becomes `get_user`, `POST /users` becomes `create_user`, and nested paths like `GET /users/:uid/posts` become `list_user_posts`
 
@@ -54,7 +53,7 @@ This exposes a `POST /mcp` endpoint. An MCP client calling `tools/list` will see
 
 ## Descriptions matter — for agents and docs
 
-Good descriptions are critical for AI agents to understand when and how to call your tools. The plugin uses Elysia's standard `detail.summary` as the MCP tool description, and TypeBox `description` on each property as the parameter description. These are the **same fields** that Elysia uses for OpenAPI/Swagger documentation — so there's zero duplication. Write them once and they serve both your API docs and your MCP tools.
+Good descriptions are critical for AI agents to understand when and how to call your tools. The plugin uses Elysia's standard `detail.summary` as the MCP tool description, and TypeBox `description` on each property as the parameter description. These are the **same fields** that Elysia uses for OpenAPI/Swagger documentation, meaning there's zero duplication. Write them once and they serve both your API docs and your MCP tools.
 
 The plugin warns at startup if any property is missing a `description`, since agents rely on these to choose the right tool and pass the correct arguments.
 
