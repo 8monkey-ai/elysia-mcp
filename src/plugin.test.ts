@@ -484,6 +484,19 @@ describe("MCP Plugin Configuration", () => {
       })
       .use(mcp());
 
+    // POST still drives the JSON-RPC path — initialize must succeed.
+    const postResponse = await app.handle(
+      new Request("http://localhost/mcp", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+        },
+        body: JSON.stringify(initRequest()),
+      }),
+    );
+    expect(postResponse.status).toBe(200);
+
     // GET without text/event-stream Accept must be rejected by the transport (406),
     // not bounce off Elysia's 404 — proves the route is wired.
     const getResponse = await app.handle(new Request("http://localhost/mcp", { method: "GET" }));

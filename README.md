@@ -49,7 +49,7 @@ const app = new Elysia()
   .listen(3000);
 ```
 
-This exposes a `POST /mcp` endpoint. An MCP client calling `tools/list` will see `list_users`, `get_user`, and `create_user`.
+This exposes a `/mcp` endpoint that speaks the MCP Streamable HTTP transport — `POST` for JSON-RPC requests, `GET` (with `Accept: text/event-stream`) for SSE streams, and `DELETE` for session termination. An MCP client calling `tools/list` will see `list_users`, `get_user`, and `create_user`.
 
 ## Descriptions matter — for agents and docs
 
