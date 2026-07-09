@@ -477,22 +477,52 @@ describe("MCP Plugin Configuration", () => {
     expect(result).toHaveProperty("result");
   });
 
-  it("only registers POST on the MCP endpoint", async () => {
+  it("handles POST, GET, and DELETE on the MCP endpoint", async () => {
     const app = new Elysia()
       .get("/test", () => "ok", {
         detail: { mcp: true },
       })
       .use(mcp());
 
-    // GET on /mcp should 404
-    const getResponse = await app.handle(new Request("http://localhost/mcp", { method: "GET" }));
-    expect(getResponse.status).toBe(404);
+    // POST still drives the JSON-RPC path — initialize must succeed.
+    const postResponse = await app.handle(
+      new Request("http://localhost/mcp", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+        },
+        body: JSON.stringify(initRequest()),
+      }),
+    );
+    expect(postResponse.status).toBe(200);
 
-    // DELETE on /mcp should 404
+    // GET without text/event-stream Accept must be rejected by the transport (406),
+    // not bounce off Elysia's 404 — proves the route is wired.
+    const getResponse = await app.handle(new Request("http://localhost/mcp", { method: "GET" }));
+    expect(getResponse.status).toBe(406);
+
+    // GET with the right Accept header opens an SSE stream.
+    const sseResponse = await app.handle(
+      new Request("http://localhost/mcp", {
+        method: "GET",
+        headers: { accept: "text/event-stream" },
+      }),
+    );
+    expect(sseResponse.status).toBe(200);
+    expect(sseResponse.headers.get("content-type")).toBe("text/event-stream");
+    // Cancel so the stream doesn't keep the test hanging.
+    await sseResponse.body?.cancel();
+
+    // DELETE in stateless mode is a no-op success.
     const deleteResponse = await app.handle(
       new Request("http://localhost/mcp", { method: "DELETE" }),
     );
-    expect(deleteResponse.status).toBe(404);
+    expect(deleteResponse.status).toBe(200);
+
+    // PUT/PATCH still rejected by the transport as Method Not Allowed.
+    const putResponse = await app.handle(new Request("http://localhost/mcp", { method: "PUT" }));
+    expect(putResponse.status).toBe(405);
   });
 });
 

@@ -23,7 +23,7 @@ Compared to [kerlos/elysia-mcp](https://github.com/kerlos/elysia-mcp) and [keith
 - **Auto-discovery** — routes become tools automatically; no registration callbacks
 - **Schema reuse** — uses your existing Elysia schema definitions (TypeBox, Zod, Valibot, or any [Standard Schema](https://github.com/standard-schema/standard-schema) provider) instead of duplicating separately
 - **Full lifecycle execution** — tool calls run through `app.handle()`, not standalone functions, so all middleware applies
-- **Streamable HTTP** — stateless POST endpoint instead of stateful sessions or SSE connections
+- **Streamable HTTP** — full GET/POST/DELETE support over the MCP Streamable HTTP transport, including SSE streams for clients that open them via GET
 
 ## Install
 
@@ -49,7 +49,7 @@ const app = new Elysia()
   .listen(3000);
 ```
 
-This exposes a `POST /mcp` endpoint. An MCP client calling `tools/list` will see `list_users`, `get_user`, and `create_user`.
+This exposes a `/mcp` endpoint that speaks the MCP Streamable HTTP transport — `POST` for JSON-RPC requests, `GET` (with `Accept: text/event-stream`) for SSE streams, and `DELETE` for session termination. An MCP client calling `tools/list` will see `list_users`, `get_user`, and `create_user`.
 
 ## Descriptions matter — for agents and docs
 
@@ -178,4 +178,4 @@ Or configure it in Claude Desktop, Cursor, or any other MCP-enabled tool as an H
 ## Important notes
 
 - **Tools only (v1)**: This plugin exposes MCP tools. Resources and prompts are not supported yet.
-- **Stateless transport**: Each request gets its own transport instance — no session tracking or SSE connections to manage.
+- **Stateless transport**: Each request gets its own transport instance — no session tracking. POST returns JSON-RPC responses inline; GET with `Accept: text/event-stream` opens a server-initiated SSE stream; DELETE is accepted as a no-op terminator.

@@ -9,9 +9,9 @@ const landingPage = `elysia-mcp e2e sample (Zod)
 Available endpoints
 ===================
 
-GET  /
-POST /letters/count
-POST /mcp
+GET                /
+POST               /letters/count
+POST/GET/DELETE    /mcp
 
 Example
 =======

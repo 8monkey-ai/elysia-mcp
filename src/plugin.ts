@@ -330,7 +330,13 @@ export function mcp(options: McpPluginOptions = {}) {
       }
     }
 
-    return app.post(
+    // Register POST, GET, and DELETE on the same path so the SDK transport
+    // can handle the full Streamable HTTP protocol:
+    //   POST   — JSON-RPC request/response (initialize, tools/list, tools/call)
+    //   GET    — open a server-initiated SSE stream (Accept: text/event-stream)
+    //   DELETE — terminate a session
+    // The transport's handleRequest() dispatches internally based on the method.
+    return app.all(
       path,
       async ({ request, body }: { request: Request; body: unknown }) => {
         refreshTools();
@@ -345,13 +351,27 @@ export function mcp(options: McpPluginOptions = {}) {
         // so reusing a single instance across concurrent requests would fail.
         const server = createMcpServer(name, version, toolMap, toolListResponse, app, request);
         await server.connect(transport);
+
+        let response: Response;
         try {
-          return await transport.handleRequest(request, {
-            parsedBody: body,
-          });
-        } finally {
+          // Always pass parsedBody — Elysia has already consumed the request
+          // stream, so the SDK's fallback `req.json()` would fail. The SDK
+          // only reads parsedBody for POST; for GET/DELETE it's ignored.
+          response = await transport.handleRequest(request, { parsedBody: body });
+        } catch (err) {
+          await transport.close();
+          throw err;
+        }
+
+        // SSE responses keep their stream open until the client disconnects —
+        // closing the transport now would tear down the stream prematurely.
+        // JSON responses (POST with enableJsonResponse, DELETE) are fully
+        // buffered by the time handleRequest resolves, so it's safe to close.
+        if (response.headers.get("content-type") !== "text/event-stream") {
           await transport.close();
         }
+
+        return response;
       },
       { detail: { mcp: false } },
     );
